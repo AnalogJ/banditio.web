@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width">
     <%-stylesheets%>
     <% stylesheet('/stylesheets/style.css') -%>
+    <% stylesheet('/components/google-code-prettify/src/prettify.css') -%>
 
 </head>
 
@@ -24,12 +25,16 @@
 </div>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
 <script type="text/javascript" src="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="/components/google-code-prettify/src/prettify.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.0.7/angular.min.js"></script>
+
+
 <script src="/socket.io/socket.io.js"></script>
 <% script('/javascripts/bandit-angular/app.js') -%>
 <% script('/javascripts/bandit-angular/services/services.js') -%>
 <% script('/javascripts/bandit-angular/controllers.js') -%>
 <% script('/javascripts/bandit-angular/directives/directives.js') -%>
+<% script('/javascripts/bandit-angular/directives/bootstrap-prettify.js') -%>
 <% script('/components/angular-socket-io/socket.js') -%>
 
 <% if (room_id) { %>
