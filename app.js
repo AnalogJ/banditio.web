@@ -57,10 +57,11 @@ io.sockets.on('connection', function (socket) {
     socket.on('join', function(data) {
         socket.join(data);
         socket.emit('message', 'joined a private room: ' + data);
+        socket.emit('message', 'there are ' + io.sockets.clients(data).length + ' clients in this room')
     });
 
     socket.on('message', function (data) {
-        io.sockets.in('private_room').emit('message',  data);
+        io.sockets.in(data.room_id).emit('message',  data);
     });
 });
 
