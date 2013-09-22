@@ -48,9 +48,13 @@ server.listen(app.get('port'), function(){
 app.get('/', routes.index);
 app.get('/users', user.list);
 io.sockets.on('connection', function (socket) {
-    socket.emit('news', { hello: 'world' });
-    socket.on('my other event', function (data) {
-        console.log(data);
+    socket.on('join', function(data) {
+        socket.join('private_room');
+        socket.emit('message', 'private_room');
+    });
+
+    socket.on('message', function (data) {
+        io.sockets.in('private_room').emit('message',  data);
     });
 });
 
