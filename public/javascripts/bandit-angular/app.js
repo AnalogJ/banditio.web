@@ -11,7 +11,7 @@ angular.module('banditApp', ['banditApp.controllers','banditApp.services','btfor
     config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
         $routeProvider.when('/snoop/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
 
-        $routeProvider.otherwise({redirectTo: '/snoop/'});
+        $routeProvider.otherwise({redirectTo: '/snoop/default'});
         $locationProvider.hashPrefix('!');
         $locationProvider.html5Mode(true);
     }])
@@ -29,11 +29,11 @@ angular.module('banditApp', ['banditApp.controllers','banditApp.services','btfor
         mySocket.on('connect', function() {
             mySocket.emit('join', ROOM_ID);
         })
-        mySocket.on('message', function(msg) {
-            console.log('[BANDIT-WEB]: '+ msg)
-
-            //Parse the message, checking for message types that are important to us. This parsing will be done by Angular in the future.
-        });
+       // mySocket.on('message', function(msg) {
+       //     console.log('[BANDIT-WEB]: '+ msg)
+       //
+       //     //Parse the message, checking for message types that are important to us. This parsing will be done by Angular in the future.
+       // });
 
         socketProvider.ioSocket(mySocket);
     });
