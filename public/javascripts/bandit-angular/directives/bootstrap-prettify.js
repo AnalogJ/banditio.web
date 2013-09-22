@@ -85,13 +85,19 @@ angular.module('bootstrapPrettify', []).directive(directive).factory(service);
  * */
 
 function setHtmlIe8SafeWay(element, html) {
-    var newElement = angular.element('<pre>' + html + '</pre>');
+    //var newElement = angular.element('<pre>' + html + '</pre>');
 
-    element.html('');
-    element.append(newElement.contents());
+    element.html(html);
+    //element.append(newElement.contents());
     return element;
 }
-
+function escape(text) {
+    return text.
+        replace(/\&/g, '&amp;').
+        replace(/\</g, '&lt;').
+        replace(/\>/g, '&gt;').
+        replace(/"/g, '&quot;');
+}
  angular.module('prettifyDirective', [])
     .factory('reindentCode', function () {
         return function (text, spaces) {
@@ -123,22 +129,54 @@ function setHtmlIe8SafeWay(element, html) {
     .directive('prettyprint', ['reindentCode', function(reindentCode) {
 
         return {
-            restrict: 'CA',
-            priority: 10,
-            scope: {
-                ngxOnshow: '&',
-                ngSetHtml: '='
+            restrict: 'C',
+            //priority: 10,
 
-            },
+            //template: '<html>{{resource.response_body}}</html>',
+            link: function(scope, element, attrs) {
+
+                scope.$watch(attrs.ngSetHtml, function (newval, oldval) {
+                    if (newval) {
+                        console.log('watcher resource',newval);
+
+
+                        var prettified = window.prettyPrintOne(
+                            escape(newval.slice(1)),
+                            undefined, true)
+                        console.log('step2 response', prettified)
+                        setHtmlIe8SafeWay(element, prettified)
+                    }
+                });
+                console.log('this is inside the link function',scope.resource);
+                //console.log(element.html(scope.resource.response_body))
+
+                //console.log(element.html('THIS IS THE NEW HTML'))
+                //element.html(prettified);
+            }/*
             compile: function(element, attr) {
-                setHtmlIe8SafeWay(element, attr.ngSetHtml);
+                //setHtmlIe8SafeWay(element, ' <html>THis is my inner content.</html>'+ attr.ngSetHtml);
 
-                console.log('inside comile function')
+                //console.log('inside comile function')
                 //element.html('THIS IS HTE NEW HTML.')
                 //element.html(window.prettyPrintOne(
                 //    reindentCode(attr.ngSetHtml),
-                //    undefined, true));
-            }
+                //
+                //
+                //   undefined, true));
+                console.log('attr inside compile', attr.ngSetHtml)
+                return {
+
+                    post: function postLink(scope, iElement, iAttrs, iController) {
+                        console.log(iAttrs.ngSetHtml)
+
+
+                        console.log('this is inside the link function',scope.resource);
+                        console.log('this is inside the link function headers',scope.resource.request_header);
+                        iElement.html('THIS IS THE POST LINKING FUNCTION.')
+                    }
+                }
+
+            }  */
         }
     }])
     /*.directive('prettyprint', ['reindentCode', function (reindentCode) {

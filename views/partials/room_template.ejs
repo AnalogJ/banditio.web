@@ -81,7 +81,7 @@
                 </tbody>
             </table>
             <hr ng-show="resource.response_body"/>
-            <div class="panel-body" ng-show="resource.response_body">
+            <div class="panel-body" ng-if="resource.response_body">
                 <button class="btn btn-primary pull-right"><span class="glyphicon glyphicon-new-window"></span></button>
                 <pre class="prettyprint linenums" ng-set-html="resource.response_body"></pre>
 

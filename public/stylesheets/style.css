@@ -6048,3 +6048,7 @@ pre {
   -moz-box-shadow: none;
   box-shadow: none;
 }
+ol.linenums {
+  max-height: 800px;
+  overflow-y: scroll;
+}
