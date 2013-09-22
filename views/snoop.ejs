@@ -6,7 +6,8 @@
     <p>A quick preview of everything Bootstrap has to offer.</p>
     <p><a class="btn btn-primary btn-large">Learn more &raquo;</a></p>
 </div>
-<div class="row">
+<div class="row" ng-repeat="(room_id, resource) in resources">
+
     <div class="col-lg-6">
         <div class="panel panel-default" id="headings">
             <div class="panel-heading">Headings</div>
