@@ -6,7 +6,7 @@
 var express = require('express');
 var engine = require('ejs-locals')
 var routes = require('./routes');
-var user = require('./routes/user');
+
 var http = require('http');
 var path = require('path');
 
@@ -45,12 +45,16 @@ server.listen(app.get('port'), function(){
 });
 
 //Routing
+app.get('/about', routes.about);
 app.get('/', routes.index);
-app.get('/users', user.list);
+app.get('/snoop/:room_id', routes.snoop);
+
+
+
 io.sockets.on('connection', function (socket) {
     socket.on('join', function(data) {
-        socket.join('private_room');
-        socket.emit('message', 'private_room');
+        socket.join(data);
+        socket.emit('message', 'joined a private room: ' + data);
     });
 
     socket.on('message', function (data) {
