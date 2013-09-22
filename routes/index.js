@@ -17,3 +17,8 @@ exports.index = function(req, res){
 exports.snoop = function(req, res){
     res.render('snoop', { room_id: req.params.room_id });
 }
+
+exports.partials = function (req, res) {
+    var name = req.params.name;
+    res.render('partials/' + name);
+};

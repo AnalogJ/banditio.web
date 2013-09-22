@@ -44,13 +44,15 @@ server.listen(app.get('port'), function(){
   console.log('Express server listening on port ' + app.get('port'));
 });
 
-//Routing
+//APPLICATION ROUTES
 app.get('/about', routes.about);
 app.get('/', routes.index);
 app.get('/snoop/:room_id', routes.snoop);
 
+//ANGULARJS ROUTES
+app.get('/partials/:name', routes.partials);
 
-
+//SOCKETIO ROUTES
 io.sockets.on('connection', function (socket) {
     socket.on('join', function(data) {
         socket.join(data);

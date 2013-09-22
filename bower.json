@@ -2,8 +2,9 @@
   "name": "banditio-web",
   "version": "0.0.0",
   "dependencies": {
-    "sass-bootstrap": "~3.0.0",
-    "jquery": "~1.10.2"
+    "angular": "~1.0.8",
+    "angular-socket-io": "~0.2.0",
+    "themestrap": "~0.3.0"
   },
   "devDependencies": {}
 }
