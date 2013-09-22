@@ -29,7 +29,7 @@ var cirrusPath = path.join(__dirname, 'public','components', 'bootstrap-theme-ci
 app.use(require('less-middleware')({
     src: __dirname + '/public',
     paths  : [cirrusPath, bootstrapPath],
-    //compress: true
+    compress: true
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -48,9 +48,11 @@ server.listen(app.get('port'), function(){
 app.get('/', routes.index);
 app.get('/users', user.list);
 io.sockets.on('connection', function (socket) {
-    socket.emit('news', { hello: 'world' });
-    socket.on('my other event', function (data) {
-        console.log(data);
+    socket.on('join', function(room) {
+        socket.join(room);
+        socket.on('message', function(msg) {
+            socket.broadcast.to(room).emit('message', msg);
+        });
     });
 });
 
