@@ -1,0 +1,24 @@
+{
+  "name": "bootstrap-theme-cirrus",
+  "version": "0.3.0",
+  "main": "dist/bootstrap.css",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "bootstrap": "3.0.0"
+  },
+  "gitHead": "88e7921f07df01717deee87731eeaf1cff50e47f",
+  "readme": "# Cirrus Theme for Bootstrap 3\r\n\r\nCirrus is a light, modern theme for Bootstrap 3 built on the [Themestrap](https://github.com/divshot/themestrap)\r\nfoundation. You can install it like so:\r\n\r\n    bower install bootstrap-theme-cirrus\r\n\r\nYou can [see the GitHub pages](http://code.divshot.com/bootstrap-theme-cirrus/) for a live demo of how it looks and further instruction. Enjoy!\r\n\r\n## Copyright and license\r\n\r\nCopyright 2013 Divshot, Inc. under [the Apache 2.0 license](LICENSE).",
+  "readmeFilename": "README.md",
+  "_id": "bootstrap-theme-cirrus@0.3.0",
+  "description": "Cirrus is a light, modern theme for Bootstrap 3 built on the [Themestrap](https://github.com/divshot/themestrap)\r foundation. You can install it like so:",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/divshot/bootstrap-theme-cirrus.git"
+  }
+}
