@@ -24,7 +24,7 @@ angular.module('banditApp', ['banditApp.controllers','banditApp.services','btfor
 
     })
     .config(function (socketProvider) {
-        var mySocket = io.connect('http://localhost');
+        var mySocket = io.connect('http://www.bandit.io');
         // do stuff with mySocket
         mySocket.on('connect', function() {
             mySocket.emit('join', ROOM_ID);
