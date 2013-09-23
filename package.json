@@ -5,6 +5,10 @@
   "scripts": {
     "start": "node app.js"
   },
+  "domains": [
+        "www.bandit.io",
+        "bandit.io"
+  ],
   "dependencies": {
     "express": "3.4.0",
     "ejs": "*",
@@ -12,5 +16,9 @@
     "ejs-locals": "~1.0.2",
     "socket.io": "~0.9.16",
     "node-uuid": "~1.4.1"
+  },
+  "subdomain": "analogj-bandio.web",
+  "engines": {
+    "node": "0.10.x"
   }
 }
