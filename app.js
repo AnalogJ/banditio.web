@@ -48,7 +48,7 @@ server.listen(app.get('port'), function(){
 app.get('/about', routes.about);
 app.get('/', routes.index);
 app.get('/snoop/:room_id', routes.snoop);
-
+app.get('/meddle/:room_id',routes.meddle);
 //ANGULARJS ROUTES
 app.get('/partials/:name', routes.partials);
 

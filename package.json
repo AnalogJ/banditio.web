@@ -1,13 +1,13 @@
 {
   "name": "bandit.io-web",
-  "version": "0.0.1",
+  "version": "0.0.1-1",
   "private": true,
   "scripts": {
     "start": "node app.js"
   },
   "domains": [
-        "www.bandit.io",
-        "bandit.io"
+    "www.bandit.io",
+    "bandit.io"
   ],
   "dependencies": {
     "express": "3.4.0",

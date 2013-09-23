@@ -17,6 +17,12 @@ exports.index = function(req, res){
 exports.snoop = function(req, res){
     res.render('snoop', { room_id: req.params.room_id });
 }
+//sets the javascript file that will be injected on each html page.
+exports.meddle = function(req, res){
+    res.header("Content-Type", "application/javascript");
+    res.render('meddle',{room_id: req.params.room_id})
+}
+
 
 exports.partials = function (req, res) {
     var name = req.params.name;
