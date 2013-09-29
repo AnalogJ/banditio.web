@@ -1,0 +1,8 @@
+{
+  "name": "angular-bootstrap",
+  "version": "0.5.0-59-g8cbeff0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/angular-ui/bootstrap.git"
+  }
+}

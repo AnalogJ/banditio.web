@@ -22,6 +22,29 @@
     <div ng-view>
         <%-body -%>
     </div>
+
+    <div ng-controller="ModalDemoCtrl">
+        <script type="text/ng-template" id="myModalContent.html">
+            <div class="modal-header">
+                <h3>I'm a modal!</h3>
+            </div>
+            <div class="modal-body">
+                <ul>
+                    <li ng-repeat="item in items">
+                        <a ng-click="selected.item = item">{{ item }}</a>
+                    </li>
+                </ul>
+                Selected: <b>{{ selected.item }}</b>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" ng-click="ok()">OK</button>
+                <button class="btn btn-warning" ng-click="cancel()">Cancel</button>
+            </div>
+        </script>
+
+        <button class="btn" ng-click="open()">Open me!</button>
+        <div ng-show="selected">Selection from a modal: {{ selected }}</div>
+    </div>
 </div>
 <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
 <script type="text/javascript" src="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
@@ -36,7 +59,7 @@
 <% script('/javascripts/bandit-angular/directives/directives.js') -%>
 <% script('/javascripts/bandit-angular/directives/bootstrap-prettify.js') -%>
 <% script('/components/angular-socket-io/socket.js') -%>
-
+<% script('/components/angular-bootstrap/dist/ui-bootstrap-tpls-0.6.0-SNAPSHOT.min.js') -%>
 <% if (room_id) { %>
 <script>
     var ROOM_ID = '<%= room_id %>';

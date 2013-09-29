@@ -4,9 +4,9 @@
   "dependencies": {
     "angular": "~1.0.8",
     "angular-socket-io": "~0.2.0",
-    "themestrap": "~0.3.0",
-    "angular-ui-codemirror": "~0.0.5",
-    "google-code-prettify": "~1.0.0"
+    "google-code-prettify": "~1.0.0",
+    "bootstrap": "~3.0.0",
+    "angular-bootstrap": "https://github.com/angular-ui/bootstrap.git#8cbeff0ffe960f5f46b9b886fa3db2d0c1ff2a9f"
   },
   "devDependencies": {}
 }

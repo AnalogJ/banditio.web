@@ -10,7 +10,7 @@
     "bandit.io"
   ],
   "dependencies": {
-    "express": "3.4.0",
+    "express": "~3.4.0",
     "ejs": "*",
     "less-middleware": "*",
     "ejs-locals": "~1.0.2",
