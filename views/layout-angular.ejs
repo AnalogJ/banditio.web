@@ -13,10 +13,10 @@
 
 <body>
 <div class="container">
-    <div class="jumbotron">
+    <div class="jumbotron" ng-controller="headerCtrl">
         <h1>Bandit.io</h1>
-        <p>A quick preview of everything Bootstrap has to offer.</p>
-        <p><a class="btn btn-primary btn-large">Learn more &raquo;</a></p>
+        <p>Spy and fiddle with your requests in realtime.</p>
+        <p><button type="button" ng-click="example_request()" class="btn btn-primary btn-large">Learn more &raquo;</button></p>
     </div>
 
     <div ng-view>

@@ -48,3 +48,18 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
 
     })
+    .controller('headerCtrl', function ($scope,$route, $routeParams, $http) {
+
+        $scope.example_request = function(){
+           console.log($routeParams.room_id)
+            var data = {room_id: $routeParams.room_id};
+            $http({
+                method: 'POST',
+                url: '/example_request',
+                data: data,
+                headers: {'Content-Type': 'application/json'}
+            })
+        }
+
+
+    })

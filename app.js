@@ -49,6 +49,7 @@ app.get('/about', routes.about);
 app.get('/', routes.index);
 app.get('/snoop/:room_id', routes.snoop);
 app.get('/meddle/:room_id',routes.meddle);
+app.post('/example_request', routes.example_request);
 //ANGULARJS ROUTES
 app.get('/partials/:name', routes.partials);
 

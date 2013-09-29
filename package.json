@@ -1,6 +1,6 @@
 {
   "name": "bandit.io-web",
-  "version": "0.0.1-1",
+  "version": "0.0.1-3",
   "private": true,
   "scripts": {
     "start": "node app.js"
@@ -15,7 +15,8 @@
     "less-middleware": "*",
     "ejs-locals": "~1.0.2",
     "socket.io": "~0.9.16",
-    "node-uuid": "~1.4.1"
+    "node-uuid": "~1.4.1",
+    "request": "~2.27.0"
   },
   "subdomain": "analogj-bandio.web",
   "engines": {
