@@ -9,8 +9,11 @@
     <meta name="keywords" content="">
     <meta name="viewport" content="width=device-width,initial-scale=1">
 
-    <%-stylesheets%>
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css">
     <% stylesheet('/stylesheets/style.css') -%>
+    <%-stylesheets%>
+
+
 </head>
 
 <body>
@@ -32,7 +35,9 @@
 <% script('/javascripts/bandit-angular/directives/directives.js') -%>
 <% script('/javascripts/bandit-angular/directives/bootstrap-prettify.js') -%>
 <% script('/components/angular-socket-io/socket.js') -%>
-
+<% script('/components/pouchdb-nightly.min.js/index.js') -%>
+<% script('/components/angular-pouchdb/angular-pouchdb.js') -%>
+<% script('/components/humanize/humanize.js') -%>
 <% if (room_id) { %>
 <script>
     var ROOM_ID = '<%= room_id %>';

@@ -15,7 +15,8 @@
     "less-middleware": "*",
     "ejs-locals": "*",
     "request": "*",
-    "bases": "~0.1.1"
+    "bases": "~0.1.1",
+    "bootstrap": "0.0.2"
   },
   "engines": {
     "node": "0.11.x"

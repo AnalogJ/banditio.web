@@ -1,6 +1,31 @@
-test
-{{resources}}
-{{message}}
-<div class="row" ng-repeat="(room_id, resource_id) in resources">
-    {{room_id}} {{resource_id}}
-</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Name | Path </th>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Type</th>
+            <th>Size</th>
+            <th>Time</th>
+        </tr>
+    </thead>
+    <tfoot>
+        <tr>
+            <td colspan="100">{{resources.length}} requests</td>
+
+        </tr>
+    </tfoot>
+    <tbody>
+    <tr ng-repeat="(resource_id, data) in resources">
+
+        <td>{{data.request.filename}} | <b>{{data.request.hostname}}</b>{{data.request.filepath}}</td>
+        <td>{{data.request.method}}</td>
+        <td>{{data.response.status}}</td>
+        <td>{{data.response.headers['content-type']}}</td>
+        <td>{{data.response.info.filesize}}</td>
+        <td>{{data.request.request_start_time | date:'mediumTime'}}</td>
+    </tr>
+
+    </tbody>
+</table>

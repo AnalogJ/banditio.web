@@ -1,6 +1,6 @@
 angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io'])
     //Panel Controllers
-    .controller('roomCtrl', function ($scope, socket) {
+    .controller('roomCtrl', function ($scope, socket, banditdb) {
 
 
         console.log('im in the room ctrl');
@@ -17,18 +17,25 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                 //initialize if empty
                 $scope.resources[data.resource_id] = $scope.resources[data.resource_id] || {};
             }
+            else{
+                return;
+            }
             switch (data.message_type) {
-                case "REQUEST_HEADER":
-                    $scope.resources[data.resource_id].request_header = data.payload;
+                case "REQUEST":
+                    $scope.resources[data.resource_id].request = data.payload;
                     break;
                 case "REQUEST_BODY":
                     break;
-                case "RESPONSE_HEADER":
-                    $scope.resources[data.resource_id].response_header = data.payload.response_header;
-                    $scope.resources[data.resource_id].response_info = data.payload.response_info;
+                case "RESPONSE":
+                    $scope.resources[data.resource_id].response = data.payload;
+                    $scope.resources[data.resource_id].response.info.filesize = humanize.filesize($scope.resources[data.resource_id].response.headers['content-length']);
+                    //$scope.resources[data.resource_id].response.headers = data.payload.response_header;
+                    //$scope.resources[data.resource_id].response_info = data.payload.response_info;
                     break;
                 case "RESPONSE_BODY":
-                    $scope.resources[data.resource_id].response_body = data.payload;
+                    banditdb.saveAttachment(data.resource_id,data.message_type,data.payload,$scope.resources[data.resource_id].response.info['content_type']).catch(function(err){
+                        console.log('err',err)
+                    })
                     break;
                 case "RES_CONSOLE_MESSAGE":
                     break;
@@ -41,6 +48,8 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                     break;
             }
 
+            //store the data in the database
+            banditdb.saveResource(data.resource_id, $scope.resources[data.resource_id])
 
 
         }
