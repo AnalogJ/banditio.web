@@ -1,0 +1,46 @@
+<!doctype html>
+
+<html ng-app="banditApp">
+
+<head>
+    <title>Bandit.io - </title>
+    <meta charset="utf-8">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <%-stylesheets%>
+    <% stylesheet('/stylesheets/style.css') -%>
+</head>
+
+<body>
+<div class="container">
+
+    <div ng-view>
+        <%-body -%>
+    </div>
+
+</div>
+<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.2/angular.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.2/angular-route.min.js"></script>
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
+<% script('/javascripts/bandit-angular/app.js') -%>
+<% script('/javascripts/bandit-angular/services/services.js') -%>
+<% script('/javascripts/bandit-angular/controllers.js') -%>
+<% script('/javascripts/bandit-angular/directives/directives.js') -%>
+<% script('/javascripts/bandit-angular/directives/bootstrap-prettify.js') -%>
+<% script('/components/angular-socket-io/socket.js') -%>
+
+<% if (room_id) { %>
+<script>
+    var ROOM_ID = '<%= room_id %>';
+    console.log('listening to room: <%= room_id %>')
+
+</script>
+<% } %>
+<%-scripts%>
+</body>
+
+</html>
