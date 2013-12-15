@@ -19,7 +19,7 @@
     <tbody>
     <tr ng-repeat="(resource_id, data) in resources">
 
-        <td>{{data.request.filename}} | <b>{{data.request.hostname}}</b>{{data.request.filepath}}</td>
+        <td><a ng-href="/snoop/{{room_id}}/{{resource_id}}">{{data.request.filename}} | <b>{{data.request.hostname}}</b>{{data.request.filepath}}</a></td>
         <td>{{data.request.method}}</td>
         <td>{{data.response.status}}</td>
         <td>{{data.response.headers['content-type']}}</td>

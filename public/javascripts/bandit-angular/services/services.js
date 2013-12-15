@@ -32,6 +32,7 @@ angular.module('banditApp.services', ['pouchdb'])
         }
 
         return {
+            db : banditdb,
             saveResource : saveResource,
             saveAttachment: saveAttachment
         };

@@ -7,9 +7,17 @@
  */
 'use strict';
 // Declare app level module which depends on filters, and services
-angular.module('banditApp', ['banditApp.controllers','banditApp.services','btford.socket-io', 'ngRoute']).
+angular.module('banditApp', ['banditApp.controllers',
+        'banditApp.services',
+        'btford.socket-io',
+        'ngRoute',
+        'ui.bootstrap',
+        'hljs'
+    ]).
     config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
         $routeProvider.when('/snoop/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
+        $routeProvider.when('/snoop/:room_id/:resource_id', {templateUrl: '/partials/resource_template', controller: 'resourceCtrl'});
+
 
         $routeProvider.otherwise({redirectTo: '/snoop/default'});
         $locationProvider.hashPrefix('!');
