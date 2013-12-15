@@ -31,9 +31,35 @@ angular.module('banditApp.services', ['pouchdb'])
             });
         }
 
+
+        function getPreviousResources(number){
+
+            function map(doc){
+                //console.log(doc)
+                if(doc.request && doc.request.request_start_time){
+                    emit(doc.request.request_start_time, doc);
+                }
+            }
+            number = number || 10;
+            return banditdb.query({map: map},{reduce: false}).then(function(data){
+                var sub_data = data.rows.slice(Math.max(data.rows.length-number, 0), data.rows.length);
+                var resp = {}
+                for(var ndx in sub_data){
+                    resp[sub_data[ndx]['id']] = sub_data[ndx].value
+                }
+                    console.log(resp)
+                return resp;
+
+            });
+
+
+        }
+
+
         return {
             db : banditdb,
             saveResource : saveResource,
-            saveAttachment: saveAttachment
+            saveAttachment: saveAttachment,
+            getPreviousResources: getPreviousResources
         };
     })

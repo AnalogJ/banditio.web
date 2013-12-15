@@ -33,6 +33,8 @@ angular.module('banditApp', ['banditApp.controllers',
     })
     .config(function (socketProvider) {
         var mySocket = io.connect('http://localhost:5000');
+        //var mySocket = io.connect('http://proxy.bandit.io:5000');
+        //
         // do stuff with mySocket
         mySocket.on('connect', function() {
             mySocket.emit('join', '123');//ROOM_ID);

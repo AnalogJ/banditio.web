@@ -1,31 +1,132 @@
+<ul class="breadcrumb">
+    <li>
+        <p>Snoop</p>
+    </li>
+    <i class="icon-angle-right"></i>
+    <li><a href="#" class="active"></a> </li>
+</ul>
+<div class="page-title"> <i class="icon-custom-left"></i>
+    <h3>Snoop - <span class="semi-bold">Network Requests</span></h3>
+</div>
 
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th>Name | Path </th>
-            <th>Method</th>
-            <th>Status</th>
-            <th>Type</th>
-            <th>Size</th>
-            <th>Time</th>
-        </tr>
-    </thead>
-    <tfoot>
-        <tr>
-            <td colspan="100">{{resources.length}} requests</td>
 
-        </tr>
-    </tfoot>
-    <tbody>
-    <tr ng-repeat="(resource_id, data) in resources">
+<div class="row">
+    <div class="col-md-12">
+        <div class="grid simple ">
+            <div class="grid-title no-border">
+                <h4>Current  <span class="semi-bold">Network Requests</span></h4>
+                <div class="tools">	<a href="javascript:;" class="collapse"></a>
+                    <a href="#grid-config" data-toggle="modal" class="config"></a>
+                    <a href="javascript:;" class="reload"></a>
+                    <a href="javascript:;" class="remove"></a>
+                </div>
+            </div>
+            <div class="grid-body no-border">
+                <table class="table no-more-tables">
+                    <thead>
+                    <tr>
+                        <th width="1%">
+                            <div class="checkbox check-default">
+                                <input id="checkbox10" type="checkbox" value="1" class="checkall">
+                                <label for="checkbox10"></label>
+                            </div>
+                        </th>
 
-        <td><a ng-href="/snoop/{{room_id}}/{{resource_id}}">{{data.request.filename}} | <b>{{data.request.hostname}}</b>{{data.request.filepath}}</a></td>
-        <td>{{data.request.method}}</td>
-        <td>{{data.response.status}}</td>
-        <td>{{data.response.headers['content-type']}}</td>
-        <td>{{data.response.info.filesize}}</td>
-        <td>{{data.request.request_start_time | date:'mediumTime'}}</td>
-    </tr>
+                        <th width="30%">Url</th>
+                        <th width="5%">Method</th>
+                        <th width="5%">Status</th>
+                        <th width="20%">Type</th>
+                        <th width="7%">Size</th>
+                        <th witdh="18%">Time</th>
+                        <th width="14%">Progress</th>
+                    </tr>
+                    </thead>
+                    <tbody>
 
-    </tbody>
-</table>
+                    <tr ng-repeat="resource_lookup in resource_times | orderBy: 'request_start_time'">
+                        <td valign="middle">
+                            <div class="checkbox check-default">
+                                <input id="checkbox11" type="checkbox" value="1">
+                                <label for="checkbox11"></label>
+                            </div>
+                        </td>
+
+                        <td><a ng-href="/snoop/{{room_id}}/{{resource_lookup.resource_id}}"><span class="muted"><strong>{{resources[resource_lookup.resource_id].request.hostname}}</strong>{{resources[resource_lookup.resource_id].request.filepath}}</span>{{resources[resource_lookup.resource_id].request.filename}}</a></td>
+                        <td>{{resources[resource_lookup.resource_id].request.method}}</td>
+                        <td>{{resources[resource_lookup.resource_id].response.status}}</td>
+                        <td>{{resources[resource_lookup.resource_id].response.headers['content-type']}}</td>
+                        <td>{{resources[resource_lookup.resource_id].response.info.filesize}}</td>
+                        <td><span class="muted">{{resources[resource_lookup.resource_id].request.request_start_time | date:'mediumDate'}}</span> {{resources[resource_lookup.resource_id].request.request_start_time | date:'mediumTime'}}</td>
+                        <td valign="middle">
+                            <div class="progress">
+                                <div data-percentage="79%" id="" class="progress-bar progress-bar-success animate-progress-bar"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="grid simple ">
+            <div class="grid-title no-border">
+                <h4>Past  <span class="semi-bold">Network Requests</span></h4>
+                <div class="tools">	<a href="javascript:;" class="collapse"></a>
+                    <a href="#grid-config" data-toggle="modal" class="config"></a>
+                    <a href="javascript:;" class="reload"></a>
+                    <a href="javascript:;" class="remove"></a>
+                </div>
+            </div>
+            <div class="grid-body no-border">
+                <table class="table no-more-tables">
+                    <thead>
+                    <tr>
+                        <th width="1%">
+                            <div class="checkbox check-default">
+                                <input id="checkbox10" type="checkbox" value="1" class="checkall">
+                                <label for="checkbox10"></label>
+                            </div>
+                        </th>
+
+                        <th width="30%">Url</th>
+                        <th width="5%">Method</th>
+                        <th width="5%">Status</th>
+                        <th width="20%">Type</th>
+                        <th width="7%">Size</th>
+                        <th witdh="18%">Time</th>
+                        <th width="14%">Progress</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+
+                    <tr ng-repeat="resource_lookup in prev_resource_times | orderBy: 'request_start_time'">
+                        <td valign="middle">
+                            <div class="checkbox check-default">
+                                <input id="checkbox11" type="checkbox" value="1">
+                                <label for="checkbox11"></label>
+                            </div>
+                        </td>
+
+                        <td><a ng-href="/snoop/{{room_id}}/{{resource_lookup.resource_id}}"><span class="muted"><strong>{{prev_resources[resource_lookup.resource_id].request.hostname}}</strong>{{prev_resources[resource_lookup.resource_id].request.filepath}}</span>{{prev_resources[resource_lookup.resource_id].request.filename}}</a></td>
+                        <td>{{prev_resources[resource_lookup.resource_id].request.method}}</td>
+                        <td>{{prev_resources[resource_lookup.resource_id].response.status}}</td>
+                        <td>{{prev_resources[resource_lookup.resource_id].response.headers['content-type']}}</td>
+                        <td>{{prev_resources[resource_lookup.resource_id].response.info.filesize}}</td>
+                        <td><span class="muted">{{prev_resources[resource_lookup.resource_id].request.request_start_time | date:'mediumDate'}}</span> {{prev_resources[resource_lookup.resource_id].request.request_start_time | date:'mediumTime'}}</td>
+                        <td valign="middle">
+                            <div class="progress">
+                                <div data-percentage="79%" id="" class="progress-bar progress-bar-success animate-progress-bar"></div>
+                            </div>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

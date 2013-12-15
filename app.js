@@ -25,7 +25,7 @@ app.use(express.session());
 app.use(app.router);
 //bootstrap-less configuration.
 var bootstrapPath = path.join(__dirname, 'public','components', 'metro-vibes-less','less','bootstrap');
-var metroVibesPath = path.join(__dirname, 'public','components', 'metro-vibes-less');
+var metroVibesPath = path.join(__dirname, 'public','components', 'theme');
 app.use(require('less-middleware')({
     src: __dirname + '/public',
     paths  : [metroVibesPath, bootstrapPath]
@@ -47,7 +47,7 @@ server.listen(app.get('port'), function(){
 //APPLICATION ROUTES
 app.get('/about', routes.about);
 app.get('/', routes.index);
-app.get('/snoop/:room_id', routes.snoop); //view currently active messages.
+app.get('/snoop/:room_id/:opt?', routes.snoop); //view currently active messages.
 app.get('/meddle/:room_id',routes.meddle);
 app.post('/example_request', routes.example_request);
 //ANGULARJS ROUTES

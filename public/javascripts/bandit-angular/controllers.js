@@ -5,6 +5,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         $scope.room_id = $routeParams.room_id
         console.log('im in the room ctrl');
         $scope.resources = {};
+        $scope.resource_times = [];
         socket.forward('message', $scope);
         $scope.$on('socket:message', function (ev, data) {
             //$scope.theData = data;
@@ -23,6 +24,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             switch (data.message_type) {
                 case "REQUEST":
                     $scope.resources[data.resource_id].request = data.payload;
+                    $scope.resource_times.push({'resource_id': data.resource_id, 'request_start_time': $scope.resources[data.resource_id].request.request_start_time});
                     break;
                 case "REQUEST_BODY":
                     break;
@@ -53,8 +55,23 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             //store the data in the database
             banditdb.saveResource(data.resource_id, $scope.resources[data.resource_id])
 
-
         }
+
+
+        banditdb.getPreviousResources(5).then(function(resp){
+            $scope.prev_resources = resp;
+
+            $scope.prev_resource_times = [];
+            for(var resource_id in resp){
+                console.log(resource_id)
+                $scope.prev_resource_times.push({
+                    'resource_id': resource_id,
+                    'request_start_time': resp[resource_id].request.request_start_time
+                })
+            }
+            console.log($scope.prev_resource_times.length)
+
+        })
     })
     .controller('headerCtrl', function ($scope,$route, $routeParams, $http) {
 
@@ -129,6 +146,15 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
         $scope.room_id =$routeParams.room_id;
         $scope.resource_id = $routeParams.resource_id;
+        $scope.selected = 'REQUEST'
+        $scope.setSelected = function(selected){
+            if($scope.selected != selected){
+                $scope.selected = selected;
+            }
+            else{
+                $scope.selected = '';
+            }
+        }
 
         console.log($routeParams.resource_id);
         banditdb.db.get($routeParams.resource_id).then(function(data){
