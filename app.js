@@ -52,7 +52,7 @@ app.get('/meddle/:room_id',routes.meddle);
 app.post('/example_request', routes.example_request);
 //ANGULARJS ROUTES
 app.get('/partials/:name', routes.partials);
-
+app.get('/files', routes.wildcard);
 /*
 //SOCKETIO ROUTES
 io.sockets.on('connection', function (socket) {

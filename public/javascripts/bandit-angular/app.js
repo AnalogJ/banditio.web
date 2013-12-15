@@ -19,7 +19,7 @@ angular.module('banditApp', ['banditApp.controllers',
         $routeProvider.when('/snoop/:room_id/:resource_id', {templateUrl: '/partials/resource_template', controller: 'resourceCtrl'});
         $routeProvider.when('/settings', {templateUrl: '/partials/settings_template', controller: 'settingsCtrl'});
         $routeProvider.when('/about', {templateUrl: '/partials/coming_soon_template'});
-        $routeProvider.when('/files', {templateUrl: '/partials/coming_soon_template'});
+        $routeProvider.when('/files', {templateUrl: '/partials/files_template'});
         $routeProvider.when('/meddle', {templateUrl: '/partials/coming_soon_template'});
 
         $routeProvider.otherwise({redirectTo: '/snoop/default'});

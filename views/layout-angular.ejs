@@ -52,10 +52,10 @@
                 <ul class="nav quick-section">
 
                     <li class="quicklinks">
-                        <div class="input-prepend inside search-form no-boarder"> <span class="add-on"> <a href="#" class="" >
+                        <div class="input-prepend inside search-form no-boarder"> <span class="add-on" ng-class="{'input-focus': search_focused}"> <a href="#" class="" >
                                     <div class="iconset top-search"></div>
                                 </a></span>
-                            <input name="" type="text"  class="no-boarder " placeholder="Search {{current_page_name}}" style="width:250px;">
+                            <input name="" type="text" class="no-boarder" ng-focus="search_focused = true" ng-blur="search_focused = false" placeholder="Search {{current_page_name}}" style="width:250px;">
                         </div>
                     </li>
 
@@ -113,13 +113,13 @@
         <!-- BEGIN SIDEBAR MENU -->
         <p class="menu-title">BROWSE</p>
         <ul>
-            <li class="start active "> <a href="index.html"> <i class="icon-custom-home"></i> <span class="title">Snoop</span> <span class="selected"></span> <span class="badge badge-important pull-right">5</span></a> </li>
-            <li class=""> <a href="/meddle"> <i class="icon-custom-ui"></i> <span class="title">Meddle</span></a>
+            <li class="start active "> <a href="index.html"> <i class="icon-cloud-download"></i> <span class="title">Snoop</span> <span class="selected"></span> <span class="badge badge-important pull-right">5</span></a> </li>
+            <li class=""> <a href="/meddle"> <i class="icon-bug"></i> <span class="title">Meddle</span></a>
             </li>
-            <li class=""> <a href="/settings"> <i class="icon-custom-chart"></i> <span class="title">Settings</span> </a> </li>
+            <li class=""> <a href="/settings"> <i class="icon-cog"></i> <span class="title">Settings</span> </a> </li>
             <li class=""> <a href="/files"> <i class="icon-custom-extra"></i> <span class="title">Files</span></a>
             </li>
-            <li class=""> <a href="/about"> <i class="icon-custom-extra"></i> <span class="title">About</span></a>
+            <li class=""> <a href="/about"> <i class="icon-info"></i> <span class="title">About</span></a>
             </li>
             <li class="hidden-lg hidden-md hidden-xs" id="more-widgets" >
                 <a href="javascript:;"> <i class="icon-ellipsis-horizontal"></i></a>
@@ -181,7 +181,7 @@
             <div class="user-info">
                 <div class="greeting">Brought to you by</div>
                 <div class="username">Analog <span class="semi-bold">J</span></div>
-                <div class="status"><a href="#">github<div class="status-icon green"></div></a></div>
+                <div class="status"><a href="http://www.thesparktree.com">thesparktree.com</a></div>
             </div>
         </div>
         <!-- END MINI-PROFILE -->

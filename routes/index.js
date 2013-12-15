@@ -29,6 +29,9 @@ exports.example_request = function(req, res){
     res.end()
 }
 
+exports.wildcard = function(req, res){
+    res.render('empty', { room_id: req.params.room_id });
+}
 exports.partials = function (req, res) {
     var name = req.params.name;
     res.render('partials/' + name);
