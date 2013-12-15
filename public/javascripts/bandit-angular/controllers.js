@@ -1,4 +1,8 @@
 angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io'])
+    // Nav Controller (Top bar and Left Menu)
+    .controller('navCtrl', function($scope,socket,banditdb){
+        $scope.current_page_name = 'Dashboard'
+    })
     //Panel Controllers
     .controller('roomCtrl', function ($scope,$routeParams, socket, banditdb) {
 
@@ -163,6 +167,6 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         }).catch(function(err){
                 console.log(err)
             });
-    });
+    })
 
 

@@ -18,7 +18,7 @@
 
 </head>
 
-<body>
+<body ng-controller="navCtrl">
 
 
 <!-- BEGIN HEADER -->
@@ -55,7 +55,7 @@
                         <div class="input-prepend inside search-form no-boarder"> <span class="add-on"> <a href="#" class="" >
                                     <div class="iconset top-search"></div>
                                 </a></span>
-                            <input name="" type="text"  class="no-boarder " placeholder="Search Dashboard" style="width:250px;">
+                            <input name="" type="text"  class="no-boarder " placeholder="Search {{current_page_name}}" style="width:250px;">
                         </div>
                     </li>
 
