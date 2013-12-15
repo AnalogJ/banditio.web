@@ -1,145 +1,168 @@
-<ul class="breadcrumb">
-    <li>
-        <p>Snoop<p>
-    </li>
-    <i class="icon-angle-right"></i>
-    <li><a href="/{{room_id}}">Network Requests</a></li>
-    <li><a href="/{{room_id}}" class="active">Request Details</a></li>
-</ul>
-<div class="page-title">
-    <a href="/{{room_id}}"><i class="icon-custom-left"></i></a>
-    <h3>Snoop - <span class="semi-bold">{{resource.request.hostname}}</span></h3>
-</div>
-<div class="row">
-    <div class="col-md-7">
-        <div class="row" ng-if="resource.request.headers">
-            <div class="col-md-12">
-                <div class="grid simple vertical green">
-                    <div class="grid-title no-border">
-                        <h4>Request <span class="semi-bold">Headers</span></h4>
-                        <div class="tools">
-                            <a href="javascript:;" class="collapse"></a>
-                            <a href="#grid-config" data-toggle="modal" class="config"></a>
-                            <a href="javascript:;" class="reload"></a>
-                            <a href="javascript:;" class="remove"></a>
-                        </div>
-                    </div>
-                    <div class="grid-body no-border">
-                        <div class="row-fluid ">
-                            <dl class="dl-horizontal">
-                                <dt>hostname</dt>
-                                <dd>{{resource.request.hostname}}</dd>
-                            </dl>
-                            <dl class="dl-horizontal">
-                                <dt>filepath</dt>
-                                <dd>{{resource.request.filepath}}{{resource.request.filename}}</dd>
-                            </dl>
-                            <dl class="dl-horizontal" ng-repeat="(header, value) in resource.request.headers">
-                                <dt>{{header}}</dt>
-                                <dd>{{value}}</dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="clearfix"></div>
+<div class="content">
 
 
-
-        <div class="row" ng-if="resource.request.data">
-            <div class="col-md-12">
-                <div class="grid simple transparent">
-                    <div class="grid-title">
-                        <h4>Request <span class="semi-bold">Body</span></h4>
-                        <div class="tools">
-                            <a href="javascript:;" class="collapse"></a>
-                            <a href="#grid-config" data-toggle="modal" class="config"></a>
-                            <a href="javascript:;" class="reload"></a>
-                            <a href="javascript:;" class="remove"></a>
-                        </div>
-                    </div>
-                    <div class="grid-body">
-                        <div hljs source="resource.request.data"></div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-
-
-        <div class="row" ng-if="resource.response.headers">
-            <div class="col-md-12">
-                <div class="grid simple vertical green">
-                    <div class="grid-title no-border">
-                        <h4>Response <span class="semi-bold">Headers</span></h4>
-                        <div class="tools">
-                            <a href="javascript:;" class="collapse"></a>
-                            <a href="#grid-config" data-toggle="modal" class="config"></a>
-                            <a href="javascript:;" class="reload"></a>
-                            <a href="javascript:;" class="remove"></a>
-                        </div>
-                    </div>
-                    <div class="grid-body no-border">
-                        <div class="row-fluid ">
-                            <dl class="dl-horizontal" ng-repeat="(header, value) in resource.response.headers">
-                                <dt>{{header}}</dt>
-                                <dd>{{value}}</dd>
-                            </dl>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row" ng-if="resource.response.data">
-            <div class="col-md-12">
-                <div class="grid simple transparent">
-                    <div class="grid-title">
-                        <h4>Response <span class="semi-bold">Body</span></h4>
-                        <div class="tools">
-                            <a href="javascript:;" class="collapse"></a>
-                            <a href="#grid-config" data-toggle="modal" class="config"></a>
-                            <a href="javascript:;" class="reload"></a>
-                            <a href="javascript:;" class="remove"></a>
-                        </div>
-                    </div>
-                    <div class="grid-body">
-                        <div hljs source="resource.response.data"></div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-
+    <ul class="breadcrumb">
+        <li>
+            <p>Bandit.io<p>
+        </li>
+        <i class="icon-angle-right"></i>
+        <li><a href="/{{room_id}}">Network Requests</a></li>
+        <li><a href="/{{room_id}}" class="active">Request Details</a></li>
+    </ul>
+    <div class="page-title">
+        <a href="/{{room_id}}"><i class="icon-custom-left"></i></a>
+        <h3>Snoop - <span class="semi-bold">{{resource.request.hostname}}</span></h3>
     </div>
-    <div class="col-md-5">
-        <div class="row">
-            <div class="col-md-12">
-                <div class="grid simple">
-                    <div class="grid-title no-border">
-                        <h4>Actions <span class="semi-bold">Heading</span></h4>
-                        <div class="tools">
-                            <a href="javascript:;" class="collapse"></a>
-                            <a href="#grid-config" data-toggle="modal" class="config"></a>
-                            <a href="javascript:;" class="reload"></a>
-                            <a href="javascript:;" class="remove"></a>
+    <div class="row">
+        <div class="col-md-7">
+            <div class="row" ng-if="resource.request.headers">
+                <div class="col-md-12">
+                    <div class="grid simple vertical green">
+                        <div class="grid-title no-border">
+                            <h4>Request <span class="semi-bold">Headers</span></h4>
+                            <div class="tools">
+                                <a href="javascript:;" class="collapse"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="reload"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
                         </div>
-                    </div>
-                    <div class="grid-body no-border">
-                        <div class="row-fluid">
-                            <p>DeleteFile</p>
-                            <p>View Status</p>
-                            <p> Connect to console</p>
-                            <p> Validate, JS Lint, tools</p>
-                            <h1>h1. Heading 1</h1>
-                            <h2>h2. Heading 2</h2>
-                            <h3>h3. Heading 3</h3>
-                            <h4>h4. Heading 4</h4>
+                        <div class="grid-body no-border">
+                            <div class="row-fluid ">
+                                <dl class="dl-horizontal">
+                                    <dt>method</dt>
+                                    <dd>{{resource.request.method}}</dd>
+                                </dl>
+                                <dl class="dl-horizontal">
+                                    <dt>protocol</dt>
+                                    <dd>{{resource.request.protocol}}</dd>
+                                </dl>
+                                <dl class="dl-horizontal">
+                                    <dt>hostname</dt>
+                                    <dd>{{resource.request.hostname}}</dd>
+                                </dl>
+                                <dl class="dl-horizontal">
+                                    <dt>filepath</dt>
+                                    <dd>{{resource.request.filepath}}{{resource.request.filename}}</dd>
+                                </dl>
+                                <hr/>
+                                <dl class="dl-horizontal" ng-repeat="(header, value) in resource.request.headers">
+                                    <dt>{{header}}</dt>
+                                    <dd>{{value}}</dd>
+                                </dl>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
+
+            <div class="row" ng-if="resource.request.data">
+                <div class="col-md-12">
+                    <div class="grid simple transparent">
+                        <div class="grid-title">
+                            <h4>Request <span class="semi-bold">Body</span></h4>
+                            <div class="tools">
+                                <a href="javascript:;" class="collapse"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="reload"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
+                        </div>
+                        <div class="grid-body">
+                            <div hljs source="resource.request.data"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+
+            <div class="row" ng-if="resource.response.headers">
+                <div class="col-md-12">
+                    <div class="grid simple vertical green">
+                        <div class="grid-title no-border">
+                            <h4>Response <span class="semi-bold">Headers</span></h4>
+                            <div class="tools">
+                                <a href="javascript:;" class="collapse"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="reload"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
+                        </div>
+                        <div class="grid-body no-border">
+                            <div class="row-fluid ">
+                                <dl class="dl-horizontal">
+                                    <dt>status</dt>
+                                    <dd>{{resource.request.status}}</dd>
+                                </dl>
+                                <dl class="dl-horizontal">
+                                    <dt>filesize</dt>
+                                    <dd>{{resource.response.info.filesize}}</dd>
+                                </dl>
+                                <hr/>
+                                <dl class="dl-horizontal" ng-repeat="(header, value) in resource.response.headers">
+                                    <dt>{{header}}</dt>
+                                    <dd>{{value}}</dd>
+                                </dl>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row" ng-if="resource.response.data">
+                <div class="col-md-12">
+                    <div class="grid simple transparent">
+                        <div class="grid-title">
+                            <h4>Response <span class="semi-bold">Body</span></h4>
+                            <div class="tools">
+                                <a href="javascript:;" class="collapse"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="reload"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
+                        </div>
+                        <div class="grid-body">
+                            <div hljs source="resource.response.data"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+        <div class="col-md-5">
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="grid simple">
+                        <div class="grid-title no-border">
+                            <h4>Actions <span class="semi-bold">Heading</span></h4>
+                            <div class="tools">
+                                <a href="javascript:;" class="collapse"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="reload"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
+                        </div>
+                        <div class="grid-body no-border">
+                            <div class="row-fluid">
+                                <p>DeleteFile</p>
+                                <p>View Status</p>
+                                <p> Connect to console</p>
+                                <p> Validate, JS Lint, tools</p>
+                                <h1>h1. Heading 1</h1>
+                                <h2>h2. Heading 2</h2>
+                                <h3>h3. Heading 3</h3>
+                                <h4>h4. Heading 4</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>

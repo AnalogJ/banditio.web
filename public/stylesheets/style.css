@@ -1,4 +1,6 @@
+@import "/components/font-awesome/css/font-awesome.css";
 @import "/components/theme/css/theme-style.css";
+@import "/components/theme/css/animate.min.css";
 @import "/components/theme/css/responsive.css";
 @import "/components/theme/css/custom-icon-set.css";
 ol.linenums {
