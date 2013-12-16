@@ -15,3 +15,8 @@ dl {
 .user-info-wrapper .user-info .status {
   margin-top: 10px;
 }
+.center-loading {
+  height: 80px;
+  display: block;
+  margin: auto;
+}

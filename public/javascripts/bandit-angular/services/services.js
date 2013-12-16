@@ -102,6 +102,21 @@ angular.module('banditApp.services', ['pouchdb'])
 
         }
 
+        function deleteResource(resource_id){
+            return getResource(resource_id)
+                .then(function(resource){
+                    console.log('deleteing',resource)
+                    if(resource['_id']){
+                        return banditdb.remove(resource)
+                    }
+                })
+                .catch(function(err){
+                    console.log(err)
+                })
+        }
+
+
+
         function saveAttachment(resource_id, type, payload, content_type){
             return banditdb.get(resource_id).then(function(document){
                 //resource found, update it
@@ -140,6 +155,7 @@ angular.module('banditApp.services', ['pouchdb'])
             db : banditdb,
             handleSocketMessage: handleSocketMessage,
             saveResource : saveResource,
+            deleteResource: deleteResource,
             saveAttachment: saveAttachment,
             getPreviousResources: getPreviousResources
         };
