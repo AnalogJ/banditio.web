@@ -118,7 +118,7 @@
                     <span ng-if="missed_requests" class="badge badge-important pull-right">{{missed_requests |  number:0}}</span>
                 </a>
             </li>
-            <li ng-class="{active: currentPage('meddle')}"> <a href="/meddle"> <i class="icon-bug"></i> <span class="title">Meddle</span></a>
+            <li ng-class="{active: currentPage('meddle')}"> <a href="/meddle/{{room_id}}"> <i class="icon-bug"></i> <span class="title">Meddle</span></a>
             </li>
             <li ng-class="{active: currentPage('settings')}"> <a href="/settings"> <i class="icon-cog"></i> <span class="title">Settings</span> </a> </li>
             <li ng-class="{active: currentPage('files')}"> <a href="/files"> <i class="icon-custom-extra"></i> <span class="title">Files</span></a>

@@ -2,7 +2,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
     // Nav Controller (Top bar and Left Menu)
     .controller('navCtrl', function($scope,$routeParams,$location,socket,banditdb){
         //Global variables
-        $scope.room_id = $routeParams.room_id
+        $scope.room_id = $routeParams.room_id || window.ROOM_ID
         $scope.missed_requests = 0;
 
         socket.forward('message', $scope);
@@ -28,7 +28,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
     })
     //Panel Controllers
     .controller('roomCtrl', function ($scope,$routeParams, socket, banditdb) {
-        $scope.room_id = $routeParams.room_id
+        $scope.room_id = $routeParams.room_id || window.ROOM_ID
 
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -161,7 +161,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
         console.log('im in the room ctrl');
 
-        $scope.room_id =$routeParams.room_id;
+        $scope.room_id =$routeParams.room_id|| window.ROOM_ID
         $scope.resource_id = $routeParams.resource_id;
         $scope.selected = 'REQUEST'
         $scope.setSelected = function(selected){
@@ -182,6 +182,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             });
     })
     .controller('meddleCtrl', function ($scope,$routeParams, socket, banditdb) {
+        $scope.room_id = $routeParams.room_id || window.ROOM_ID;
         console.log('meddle')
         $scope.loadingFinished = function(){
             $scope.loadingDebugger = false;
