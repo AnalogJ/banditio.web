@@ -16,14 +16,14 @@ angular.module('banditApp', ['banditApp.controllers',
         'hljs'
     ]).
     config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
-        $routeProvider.when('/snoop/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
-        $routeProvider.when('/snoop/:room_id/:resource_id', {templateUrl: '/partials/resource_template', controller: 'resourceCtrl'});
+        $routeProvider.when('/capture/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
+        $routeProvider.when('/capture/:room_id/:resource_id', {templateUrl: '/partials/resource_template', controller: 'resourceCtrl'});
         $routeProvider.when('/settings', {templateUrl: '/partials/settings_template', controller: 'settingsCtrl'});
         $routeProvider.when('/about', {templateUrl: '/partials/coming_soon_template'});
         $routeProvider.when('/home', {templateUrl: '/partials/home_template'});
         $routeProvider.when('/meddle/:room_id', {templateUrl: '/partials/meddle_template', controller: 'meddleCtrl'});
 
-        $routeProvider.otherwise({redirectTo: '/snoop/default'});
+        $routeProvider.otherwise({redirectTo: '/home'});
         $locationProvider.hashPrefix('!');
         $locationProvider.html5Mode(true);
     }])
@@ -38,10 +38,15 @@ angular.module('banditApp', ['banditApp.controllers',
     .config(function (socketProvider) {
         var mySocket = io.connect('http://localhost:5000');
         //var mySocket = io.connect('http://proxy.bandit.io:5000');
-        //
+
+
+        //roomID should be taken from the following places in order.
+        // ROOM_ID written to the page
+
+
         // do stuff with mySocket
         mySocket.on('connect', function() {
-            mySocket.emit('join', '123');//ROOM_ID);
+            mySocket.emit('join', window.ROOM_ID);
         })
 //        mySocket.on('message', function(msg) {
 //            console.log('[BANDIT-WEB]: '+ msg)

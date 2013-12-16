@@ -11,7 +11,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             banditdb.handleSocketMessage(data)
                 .then(function(resource){
                     $scope.$broadcast('updated_resource', resource);
-                    if(!$scope.currentPage('snoop')){
+                    if(!$scope.currentPage('capture')){
                         $scope.missed_requests +=0.25; //TODO: fix stupid hack because requests have 4 updates... sigh.
                     }
 
@@ -20,7 +20,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
 
         $scope.currentPage = function(check_page){
-            var currentRoute = $location.path().substring(1) || 'snoop';
+            var currentRoute = $location.path().substring(1) || 'capture';
             return currentRoute.lastIndexOf(check_page, 0) === 0;
         }
 

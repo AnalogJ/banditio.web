@@ -122,8 +122,8 @@
         <ul>
             <li class="start" ng-class="{active: currentPage('home')}"> <a href="/home"> <i class="icon-custom-extra"></i> <span class="title">Home</span></a>
             </li>
-            <li  ng-class="{active: currentPage('snoop')}"> <a href="/snoop/{{room_id}}">
-                    <i class="icon-cloud-download"></i> <span class="title">Snoop</span>
+            <li  ng-class="{active: currentPage('capture')}"> <a href="/capture/{{room_id}}">
+                    <i class="icon-cloud-download"></i> <span class="title">Capture</span>
                     <span ng-if="missed_requests" class="badge badge-important pull-right">{{missed_requests |  number:0}}</span>
                 </a>
             </li>
@@ -132,33 +132,6 @@
             <li ng-class="{active: currentPage('settings')}"> <a href="/settings"> <i class="icon-cog"></i> <span class="title">Settings</span> </a> </li>
 
             <li ng-class="{active: currentPage('about')}"> <a href="/about"> <i class="icon-info"></i> <span class="title">About</span></a>
-            </li>
-            <li class="hidden-lg hidden-md hidden-xs" id="more-widgets" >
-                <a href="javascript:;"> <i class="icon-ellipsis-horizontal"></i></a>
-                <ul class="sub-menu">
-                    <div class="side-bar-widgets">
-                        <p class="menu-title">FOLDER <span class="pull-right"><a href="#" class="create-folder"><i class="icon-plus"></i></a></span></p>
-                        <ul class="folders" id="folders">
-                            <li><a href="#"><div class="status-icon green"></div> My quick tasks </a> </li>
-                            <li><a href="#"><div class="status-icon red"></div> To do list </a> </li>
-                            <li><a href="#"><div class="status-icon blue"></div> Projects </a> </li>
-                            <li id="folder-input" class="folder-input" style="display:none"><input type="text" placeholder="Name of folder" class="no-boarder folder-name" name="" id="folder-name"></li>
-                        </ul>
-                        <p class="menu-title">PROJECTS </p>
-                        <div class="status-widget">
-                            <div class="status-widget-wrapper">
-                                <div class="title">Freelancer<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
-                                <p>Redesign home page</p>
-                            </div>
-                        </div>
-                        <div class="status-widget">
-                            <div class="status-widget-wrapper">
-                                <div class="title">envato<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
-                                <p>Statistical report</p>
-                            </div>
-                        </div>
-                    </div>
-                </ul>
             </li>
         </ul>
         <div class="side-bar-widgets">
@@ -169,17 +142,23 @@
                 <li><a href="#"><div class="status-icon yellow"></div> Favorites </a> </li>
                 <li id="folder-input" class="folder-input" style="display:none"><input type="text" placeholder="Name of folder" class="no-boarder folder-name" name="" id="folder-name"></li>
             </ul>
-            <p class="menu-title">PROJECTS </p>
+            <p class="menu-title">Connection Info</p>
             <div class="status-widget">
                 <div class="status-widget-wrapper">
-                    <div class="title">Freelancer<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
-                    <p>Redesign home page</p>
+                    <div class="title">proxy.bandit.io:80<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
+                    <p>Proxy Host</p>
                 </div>
             </div>
             <div class="status-widget">
                 <div class="status-widget-wrapper">
-                    <div class="title">envato<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
-                    <p>Statistical report</p>
+                    <div class="title">{{room_id}}<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
+                    <p>Username</p>
+                </div>
+            </div>
+            <div class="status-widget">
+                <div class="status-widget-wrapper">
+                    <div class="title">X<a href="#" class="remove-widget"><i class="icon-custom-cross"></i></a></div>
+                    <p>Password</p>
                 </div>
             </div>
         </div>

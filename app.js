@@ -20,7 +20,7 @@ app.use(express.favicon());
 app.use(express.logger('dev'));
 app.use(express.bodyParser());
 app.use(express.methodOverride());
-app.use(express.cookieParser('your secret here'));
+app.use(express.cookieParser('2a167c71-0d7b-4fc4-a2da-b2f4fcdef090')); //unique and must stay constant to decrypt previously created cookies.
 app.use(express.session());
 app.use(app.router);
 //bootstrap-less configuration.
@@ -45,15 +45,15 @@ server.listen(app.get('port'), function(){
 });
 
 //APPLICATION ROUTES
-
-app.get('/', routes.index);
-app.get('/snoop/:room_id/:opt?', routes.snoop); //view currently active messages.
-app.get('/meddle/:room_id',routes.wildcard);
-app.post('/example_request', routes.example_request);
-//ANGULARJS ROUTES
 app.get('/partials/:name', routes.partials);
-app.get('/files', routes.wildcard);
+app.post('/example_request', routes.example_request);
+
+//ANGULARJS ROUTES
+app.get('/', routes.wildcard);
+app.get('/home', routes.wildcard);
+app.get('/capture/:room_id?/:opt?', routes.wildcard); //view currently active messages.
 app.get('/meddle', routes.wildcard);
+app.get('/meddle/:room_id',routes.wildcard);
 app.get('/about', routes.wildcard);
 
 /*
