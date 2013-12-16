@@ -21,13 +21,13 @@ dl {
   margin: auto;
 }
 .dead-center-loading {
-  width: 124px;
-  height: 128px;
+  width: 100px;
+  height: 100px;
   position: absolute;
   left: 50%;
   top: 50%;
-  margin-left: -62px;
-  margin-top: -64px;
+  margin-left: -50px;
+  margin-top: -50px;
 }
 .limited-height {
   max-height: 600px;
