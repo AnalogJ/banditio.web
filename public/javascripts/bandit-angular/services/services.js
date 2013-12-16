@@ -3,88 +3,100 @@ angular.module('banditApp.services', ['pouchdb'])
     .factory('banditdb', function($q,pouchdb) {
         var banditdb = pouchdb.create('banditdb')
 
+        var cache = {};
 
         function handleSocketMessage(socket_message){
             if (!socket_message.resource_id) {
                 //resolve with error.
-                return;
+                throw "no resource_id sent";
             }
             //initialize if empty
-            getResource(socket_message.resource_id, {request: {}, response: {}}).then(function (resource) {
-                var resource_time_info = null;
-                //handle message
-                switch (socket_message.message_type) {
-                    case "REQUEST":
-                        resource.request = socket_message.payload;
-                        resource_time_info = {'resource_id': socket_message.resource_id, 'request_start_time': resource.request.request_start_time};
-                        break;
-                    case "REQUEST_BODY":
-                        break;
-                    case "RESPONSE":
-                        resource.response = socket_message.payload;
-                        resource.response.info.filesize = humanize.filesize(resource.response.headers['content-length']);
-                        break;
-                    case "RESPONSE_BODY":
-                        //TODO:store the response and request data in a pouchdb attachment.
-                        //banditdb.saveAttachment(data.resource_id,data.message_type,data.payload,$scope.resources[data.resource_id].response.info['content_type']).catch(function(err){
-                        //    console.log('err',err)
-                        //})
-                        resource.response.data = socket_message.payload
-                        break;
-                    case "RES_CONSOLE_MESSAGE":
-                        break;
-                    case "RES_CONSOLE_COMMAND":
-                        break;
-                    case "RES_DISCONNECTED":
-                        break;
-                    case "PROXY_AUTHORIZED":
-                        break;
-                    default:
-                        console.log('SWITCH FAILED', socket_message.resource_id, socket_message.message_type)
-                        return resource;
-                        break;
-                }
-                //store the data in the database
-                return saveResource(socket_message.resource_id, resource);
+            cache[socket_message.resource_id] = getResource(socket_message.resource_id, {request: {}, response: {}})
+                .then(function (resource) {
+                    var resource_time_info = null;
+                    //handle message
+                    console.log('handing message:'+ socket_message.message_type)
+                    switch (socket_message.message_type) {
+                        case "REQUEST":
+                            resource.request = socket_message.payload;
+                            resource_time_info = {'resource_id': socket_message.resource_id, 'request_start_time': resource.request.request_start_time};
+                            break;
+                        case "REQUEST_BODY":
+                            break;
+                        case "RESPONSE":
+                            resource.response = socket_message.payload;
+                            resource.response.info.filesize = humanize.filesize(resource.response.headers['content-length']);
+                            break;
+                        case "RESPONSE_BODY":
+                            //TODO:store the response and request data in a pouchdb attachment.
+                            //banditdb.saveAttachment(data.resource_id,data.message_type,data.payload,$scope.resources[data.resource_id].response.info['content_type']).catch(function(err){
+                            //    console.log('err',err)
+                            //})
+                            resource.response.data = socket_message.payload
+                            break;
+                        case "RES_CONSOLE_MESSAGE":
+                            break;
+                        case "RES_CONSOLE_COMMAND":
+                            break;
+                        case "RES_DISCONNECTED":
+                            break;
+                        case "PROXY_AUTHORIZED":
+                            break;
+                        default:
+                            console.log('SWITCH FAILED', socket_message.resource_id, socket_message.message_type)
+                            throw "switch failed."
+                            break;
+                    }
+                    //store the data in the database
+                    return resource;
 
-                //send message to any listeners that a message has been handled
-            }).catch(function(err){
-                    console.log(
-                        'error after resource cache', err
-                    )
+                    //send message to any listeners that a message has been handled
+                })
+                .then(function(resource){
+                    console.log('saving resource', resource);
+                    return saveResource(socket_message.resource_id, resource);
                 })
 
-
+            return cache[socket_message.resource_id];
         }
 
 
 
         function getResource(resource_id, default_payload){
-
-            return banditdb
-                .get(resource_id)
-                .catch(function(err){
-                    //resourece not found, save it.
-                    console.log('file not found:'+resource_id,err);
-                    default_payload = default_payload || {};
-                    default_payload['_id'] = resource_id
-                    return default_payload;
-                 })
+            if(cache[resource_id]){
+                return cache[resource_id];
+            }
+            else{
+                cache[resource_id] = banditdb
+                    .get(resource_id)
+                    .catch(function(err){
+                        //resourece not found, save it.
+                        console.log('file not found:'+resource_id,err);
+                        default_payload = default_payload || {};
+                        default_payload['_id'] = resource_id
+                        return default_payload;
+                    })
+                return cache[resource_id]
+            }
         }
 
         function saveResource(resource_id, payload){
-            //TODO: this needs to be cleaned up to use caching of promises so that the retry does need to execute as often.
+
             /*
-            return banditdb.put(payload).then(function(document){
-                console.log(document)
-            }).catch(function(err){
-                    console.log('err,', err)
-                })
-                */
+             return banditdb.put(payload).then(function(document){
+             console.log(document)
+             }).catch(function(err){
+             console.log('err,', err)
+             })
+             */
             //payload['_id'] = resource_id
-            return banditdb.put(payload).catch(retry)
+            return banditdb.put(payload).then(function(data){
+                payload['_rev'] = data.rev;
+                return payload;
+            })
 
-
+            /* No longer needed since caching was implemented...? leaving code in place until caching is fully tested.
+            //.catch(retry)
 
             function retry(err){
                 //resourece could not be saved.
@@ -99,7 +111,7 @@ angular.module('banditApp.services', ['pouchdb'])
                 })
 
             }
-
+            */
         }
 
         function deleteResource(resource_id){
@@ -142,7 +154,7 @@ angular.module('banditApp.services', ['pouchdb'])
                 for(var ndx in sub_data){
                     resp[sub_data[ndx]['id']] = sub_data[ndx].value
                 }
-                    console.log(resp)
+                console.log(resp)
                 return resp;
 
             });

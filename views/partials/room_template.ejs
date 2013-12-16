@@ -91,7 +91,7 @@
 
                     <div class="tools"><a ng-click="prev_collapsed = !prev_collapsed" ng-class="{collapse: !prev_collapsed, expand:prev_collapsed}"></a>
                         <a href="#grid-config" data-toggle="modal" class="config"></a>
-                        <a class="reload"></a>
+                        <a ng-click="getPreviousResources()" class="reload"></a>
                         <a class="remove"></a>
                     </div>
                 </div>
@@ -172,7 +172,6 @@
 
 <div class="admin-bar" id="quick-access" style="bottom: 0px;" ng-show="showDelete()">
     <div class="admin-bar-inner">
-
         <button class="btn btn-danger  btn-add" type="button" ng-click="clickDelete()"><i class="icon-trash"></i> Move to trash</button>
         <button class="btn btn-white  btn-cancel" type="button" ng-click="clickClear()">Clear Selection</button>
     </div>
