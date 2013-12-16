@@ -20,3 +20,22 @@ dl {
   display: block;
   margin: auto;
 }
+.dead-center-loading {
+  width: 124px;
+  height: 128px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -62px;
+  margin-top: -64px;
+}
+.limited-height {
+  max-height: 600px;
+  overflow: auto;
+  overflow-x: hidden;
+}
+.limited-height-long {
+  max-height: 900px;
+  overflow: auto;
+  overflow-x: hidden;
+}

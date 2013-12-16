@@ -27,7 +27,7 @@
                         <a class="remove"></a>
                     </div>
                 </div>
-                <div class="grid-body no-border" ng-hide="current_collapsed">
+                <div class="grid-body no-border limited-height" ng-hide="current_collapsed" ng-if="resource_times.length">
                     <table class="table no-more-tables table-hover">
                         <thead>
                         <tr>
@@ -78,6 +78,10 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="grid-body no-border" ng-hide="current_collapsed" ng-if="!resource_times.length">
+                    <h3>Nothing <span class="semi-bold">Here</span></h3>
+                    <p>Any requests made through the Bandit.io proxy will be visible here. </p>
+                </div>
             </div>
         </div>
     </div>
@@ -97,9 +101,9 @@
                 </div>
                 <div class="grid-body no-border" ng-hide="prev_collapsed" ng-if="loading_prev_resources">
 
-                <img src="/images/loading.gif" class="center-loading"/>
-                    </div>
-                <div class="grid-body no-border" ng-hide="prev_collapsed" ng-if="!loading_prev_resources && prev_resource_times.length">
+                    <img src="/images/loading.gif" class="center-loading"/>
+                </div>
+                <div class="grid-body no-border limited-height" ng-hide="prev_collapsed" ng-if="!loading_prev_resources && prev_resource_times.length">
                     <table  class="table no-more-tables table-hover">
                         <thead>
                         <tr>
@@ -153,8 +157,7 @@
                     <div class="row">
                         <div class="col-md-12">
 
-                            <div class="dataTables_info">Showing <b>{{prev_resource_times.length}}</b> of 57 entries {{prev_resource_selection}}
-                                {{current_resource_selection}}</div>
+                            <div class="dataTables_info">Showing <b>{{prev_resource_times.length}}</b> of -- entries</div>
                         </div>
                     </div>
                 </div>

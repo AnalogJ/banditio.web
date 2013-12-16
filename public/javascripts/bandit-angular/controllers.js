@@ -1,30 +1,34 @@
 angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io'])
     // Nav Controller (Top bar and Left Menu)
-    .controller('navCtrl', function($scope,$routeParams,socket,banditdb){
+    .controller('navCtrl', function($scope,$routeParams,$location,socket,banditdb){
         //Global variables
         $scope.room_id = $routeParams.room_id
-        $scope.current_page_name = 'Dashboard'
+        $scope.missed_requests = 0;
 
         socket.forward('message', $scope);
         $scope.$on('socket:message', function (ev, data) {
             //$scope.theData = data;
             banditdb.handleSocketMessage(data)
                 .then(function(resource){
-                    console.log('finsihed parsing message, attempting to broadcast it. ')
                     $scope.$broadcast('updated_resource', resource);
-
+                    if(!$scope.currentPage('snoop')){
+                        $scope.missed_requests +=0.25; //TODO: fix stupid hack because requests have 4 updates... sigh.
+                    }
 
                 })
-            console.log('MESSAGE FROM INSIDE NAV Controller: '+ data)
         });
 
+
+        $scope.currentPage = function(check_page){
+            var currentRoute = $location.path().substring(1) || 'snoop';
+            return currentRoute.lastIndexOf(check_page, 0) === 0;
+        }
 
 
     })
     //Panel Controllers
     .controller('roomCtrl', function ($scope,$routeParams, socket, banditdb) {
         $scope.room_id = $routeParams.room_id
-        console.log('im in the room ctrl');
 
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,7 +39,6 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
         var cleanUpResourceListener = $scope.$on('updated_resource',
             function(event, resource) {
-                console.log('recieved broadcasted resource', resource)
                 if(!$scope.resources[resource['_id']]){
                     //object is seen for the first time. add resource_times obj
                     $scope.resource_times.push({'resource_id': resource['_id'], 'request_start_time': resource.request.request_start_time});
@@ -127,7 +130,6 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                 }
             }
 
-            console.log('selection = ', $scope.prev_resource_selection)
         }
         $scope.clickClear = function(){
             for(var resource_id in $scope.prev_resource_selection){
@@ -178,6 +180,18 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         }).catch(function(err){
                 console.log(err)
             });
+    })
+    .controller('meddleCtrl', function ($scope,$routeParams, socket, banditdb) {
+        console.log('meddle')
+        $scope.loadingFinished = function(){
+            $scope.loadingDebugger = false;
+            console.log('finsihed loading.')
+        }
+        $scope.loadingDebugger = true;
+
+        var debuggerUrl = 'https://trigger.io/catalyst/client/#'+($scope.room_id || '991842F0-9862-4628-97F5-ACA0C1EA71C5');
+        $scope.debuggerUrl = debuggerUrl
+
     })
 
 

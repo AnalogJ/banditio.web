@@ -45,14 +45,17 @@ server.listen(app.get('port'), function(){
 });
 
 //APPLICATION ROUTES
-app.get('/about', routes.about);
+
 app.get('/', routes.index);
 app.get('/snoop/:room_id/:opt?', routes.snoop); //view currently active messages.
-app.get('/meddle/:room_id',routes.meddle);
+app.get('/meddle/:room_id',routes.wildcard);
 app.post('/example_request', routes.example_request);
 //ANGULARJS ROUTES
 app.get('/partials/:name', routes.partials);
 app.get('/files', routes.wildcard);
+app.get('/meddle', routes.wildcard);
+app.get('/about', routes.wildcard);
+
 /*
 //SOCKETIO ROUTES
 io.sockets.on('connection', function (socket) {

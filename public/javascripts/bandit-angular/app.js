@@ -9,6 +9,7 @@
 // Declare app level module which depends on filters, and services
 angular.module('banditApp', ['banditApp.controllers',
         'banditApp.services',
+        'banditApp.directives',
         'btford.socket-io',
         'ngRoute',
         'ui.bootstrap',
@@ -20,7 +21,7 @@ angular.module('banditApp', ['banditApp.controllers',
         $routeProvider.when('/settings', {templateUrl: '/partials/settings_template', controller: 'settingsCtrl'});
         $routeProvider.when('/about', {templateUrl: '/partials/coming_soon_template'});
         $routeProvider.when('/files', {templateUrl: '/partials/files_template'});
-        $routeProvider.when('/meddle', {templateUrl: '/partials/coming_soon_template'});
+        $routeProvider.when('/meddle/:room_id', {templateUrl: '/partials/meddle_template', controller: 'meddleCtrl'});
 
         $routeProvider.otherwise({redirectTo: '/snoop/default'});
         $locationProvider.hashPrefix('!');
