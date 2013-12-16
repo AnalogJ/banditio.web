@@ -11,7 +11,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             banditdb.handleSocketMessage(data)
                 .then(function(resource){
                     console.log('finsihed parsing message, attempting to broadcast it. ')
-                    //$scope.$broadcast('someEvent', [1,2,3]);
+                    $scope.$broadcast('updated_resource', resource);
 
 
                 })
@@ -23,22 +23,33 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
     })
     //Panel Controllers
     .controller('roomCtrl', function ($scope,$routeParams, socket, banditdb) {
-        //$scope.$on('someEvent', function(event, mass) {console.log('recieved broadcasted message', mass)});
-
-
-
         $scope.room_id = $routeParams.room_id
         console.log('im in the room ctrl');
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        //Logic for current table
+        $scope.current_resource_selection = {}
         $scope.resources = {};
         $scope.resource_times = [];
 
+        var cleanUpResourceListener = $scope.$on('updated_resource',
+            function(event, resource) {
+                console.log('recieved broadcasted resource', resource)
+                if(!$scope.resources[resource['_id']]){
+                    //object is seen for the first time. add resource_times obj
+                    $scope.resource_times.push({'resource_id': resource['_id'], 'request_start_time': resource.request.request_start_time});
+                }
+                $scope.resources[resource['_id']] = resource;
 
-        //Logic for current table
-        // toggle selection for a given fruit by name
-        $scope.current_resource_selection = []
+            });
+        $scope.$on('$destroy', function() {
+            cleanUpResourceListener();
+        })
 
 
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //Logic for previous table
         $scope.prev_resource_selection = {};
 
@@ -67,9 +78,16 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         $scope.getPreviousResources();
 
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Event Handlers
         $scope.showDelete = function(){
             for(var prop in $scope.prev_resource_selection){
                 if($scope.prev_resource_selection[prop]){
+                    return true;
+                }
+            }
+            for(var prop in $scope.current_resource_selection){
+                if($scope.current_resource_selection[prop]){
                     return true;
                 }
             }
@@ -93,12 +111,30 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                     })
                 }
             }
+            for(var resource_id in $scope.current_resource_selection){
+                if($scope.current_resource_selection[resource_id]){
+                    banditdb.deleteResource(resource_id).then(function(data){
+                        var resource_id = data['id']
+                        delete $scope.current_resource_selection[resource_id];
+
+                        for(ndx in $scope.resource_times){
+                            if($scope.resource_times[ndx].resource_id == resource_id){
+                                $scope.resource_times.splice(ndx,1);
+                            }
+                        }
+
+                    })
+                }
+            }
 
             console.log('selection = ', $scope.prev_resource_selection)
         }
         $scope.clickClear = function(){
             for(var resource_id in $scope.prev_resource_selection){
                 delete $scope.prev_resource_selection[resource_id];
+            }
+            for(var resource_id in $scope.current_resource_selection){
+                delete $scope.current_resource_selection[resource_id];
             }
         }
 

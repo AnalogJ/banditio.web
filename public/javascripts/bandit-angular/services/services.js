@@ -13,13 +13,11 @@ angular.module('banditApp.services', ['pouchdb'])
             //initialize if empty
             cache[socket_message.resource_id] = getResource(socket_message.resource_id, {request: {}, response: {}})
                 .then(function (resource) {
-                    var resource_time_info = null;
                     //handle message
                     console.log('handing message:'+ socket_message.message_type)
                     switch (socket_message.message_type) {
                         case "REQUEST":
                             resource.request = socket_message.payload;
-                            resource_time_info = {'resource_id': socket_message.resource_id, 'request_start_time': resource.request.request_start_time};
                             break;
                         case "REQUEST_BODY":
                             break;
