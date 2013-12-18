@@ -32,6 +32,13 @@ angular.module('banditApp.services', ['pouchdb'])
                             //})
                             resource.response.data = socket_message.payload
                             break;
+                        case "RESPONSE_CLOSE":
+                            console.log('-----------CLOSE-------------')
+                            break;
+                        case "RESPONSE_ERROR":
+                            console.log('-----------AN ERROR OCCURED-------------', socket_message.payload)
+                            resource.response.error = socket_message.payload
+                            break;
                         case "RES_CONSOLE_MESSAGE":
                             break;
                         case "RES_CONSOLE_COMMAND":

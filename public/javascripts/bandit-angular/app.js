@@ -36,8 +36,8 @@ angular.module('banditApp', ['banditApp.controllers',
 
     })
     .config(function (socketProvider) {
-        var mySocket = io.connect('http://localhost:5000');
-        //var mySocket = io.connect('http://proxy.bandit.io:5000');
+        //var mySocket = io.connect('http://localhost:5000');
+        var mySocket = io.connect('http://proxy.bandit.io:5000');
 
 
         //roomID should be taken from the following places in order.
