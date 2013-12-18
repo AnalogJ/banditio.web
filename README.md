@@ -11,3 +11,8 @@ banditio.web project messaging protocol
     payload :
 
 }
+
+
+features
+
+group requests by sequence, or site.

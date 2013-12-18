@@ -41,7 +41,7 @@ exports.wildcard = function(req, res){
         var randomizer = Math.ceil(Math.random()*100);
         room_id = hashids.encrypt(timestamp, randomizer);
     }
-    res.cookie('room_id', room_id, { maxAge: 60*60*1000 }) //expires in 60 minutes
+    res.cookie('room_id', room_id, { maxAge: 24*60*60*1000 }) //expires in 24 hours
     //check roomid parameter, then check cookie, then generate room_id.
     res.render('angular', { room_id: room_id });
 }

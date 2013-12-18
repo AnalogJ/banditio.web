@@ -1,4 +1,4 @@
-angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io'])
+angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io','infinite-scroll'])
     // Nav Controller (Top bar and Left Menu)
     .controller('navCtrl', function($scope,$routeParams,$location,socket,banditdb){
         //Global variables
@@ -55,25 +55,31 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         //Logic for previous table
         $scope.prev_resource_selection = {};
-
+        $scope.prev_resources = {}
+        var next_start_key =null;
+        $scope.resources_left = 0;
         $scope.getPreviousResources = function(){
-            if($scope.loading_prev_resources){
+            if($scope.loading_prev_resources || next_start_key == -1){
                 return;
             }
             $scope.loading_prev_resources = true;
-            banditdb.getPreviousResources(5)
+            banditdb.getPreviousResources(5,next_start_key)
                 .then(function(resp){
                     $scope.loading_prev_resources = false;
-                    $scope.prev_resources = resp;
+                    next_start_key = resp.next_start_key;
 
-                    $scope.prev_resource_times = [];
-                    for(var resource_id in resp){
+
+                    $.extend($scope.prev_resources, resp.data_page);
+
+                    $scope.prev_resource_times = $scope.prev_resource_times || [];
+                    //debugger;
+                    for(var resource_id in resp.data_page){
                         $scope.prev_resource_times.push({
                             'resource_id': resource_id,
-                            'request_start_time': resp[resource_id].request.request_start_time
+                            'request_start_time': resp.data_page[resource_id].request.request_start_time
                         })
                     }
-
+                    $scope.resources_left = $scope.prev_resource_times.length +  resp.data_left
                 }).catch(function(err){
                     $scope.loading_prev_resources = false;
                 });
@@ -177,11 +183,33 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         banditdb.db.get($routeParams.resource_id).then(function(data){
             console.log(data);
             $scope.resource = data;
+
+            //attempt to get attachments
+            console.log('attachments')
+            banditdb.db.getAttachment($routeParams.resource_id, 'response_data').then(function(data){
+                var reader = new FileReader();
+                reader.onloadend = function() {
+                    $scope.resource.response.data = reader.result;
+                };
+                reader.readAsText(data);
+            },function(err){
+                console.log(err)
+            })
+            banditdb.db.getAttachment($routeParams.resource_id, 'request_data').then(function(data){
+                var reader = new FileReader();
+                reader.onloadend = function() {
+                    $scope.resource.request.data = reader.result;
+                };
+                reader.readAsText(data);
+            },function(err){
+                console.log(err)
+            })
+
         }).catch(function(err){
                 console.log(err)
             });
     })
-    .controller('meddleCtrl', function ($scope,$routeParams, socket, banditdb) {
+    .controller('meddleCtrl', function ($scope,$routeParams,$sce, socket, banditdb) {
         $scope.room_id = $routeParams.room_id || window.ROOM_ID;
         console.log('meddle')
         $scope.loadingFinished = function(){
@@ -190,8 +218,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         }
         $scope.loadingDebugger = true;
 
-        var debuggerUrl = 'https://trigger.io/catalyst/client/#'+($scope.room_id || '991842F0-9862-4628-97F5-ACA0C1EA71C5');
-        $scope.debuggerUrl = debuggerUrl
+        $scope.debuggerUrl = $sce.trustAsResourceUrl('https://trigger.io/catalyst/client/#'+($scope.room_id || 'default'));
 
     })
 

@@ -32,7 +32,7 @@
 <div class="header navbar navbar-inverse ">
     <!-- BEGIN TOP NAVIGATION BAR -->
     <div class="navbar-inner">
-        <div class="header-seperation">
+        <div class="header-seperation" ng-hide="compact_menu">
             <ul class="nav pull-left notifcation-center" id="main-menu-toggle-wrapper" style="display:none">
                 <li class="dropdown"> <a id="main-menu-toggle" href="#main-menu"  class="" >
                         <div class="iconset top-menu-toggle-white"></div>
@@ -52,7 +52,7 @@
             <!-- BEGIN TOP NAVIGATION MENU -->
             <div class="pull-left">
                 <ul class="nav quick-section">
-                    <li class="quicklinks"> <a href="#" class="" id="layout-condensed-toggle" >
+                    <li class="quicklinks"> <a ng-click="compact_menu = !compact_menu" class="" id="layout-condensed-toggle" >
                             <div class="iconset top-menu-toggle-dark"></div>
                         </a> </li>
                 </ul>
@@ -114,7 +114,7 @@
 <!-- BEGIN CONTAINER -->
 <div class="page-container row-fluid">
     <!-- BEGIN SIDEBAR -->
-    <div class="page-sidebar" id="main-menu">
+    <div class="page-sidebar" ng-class="{'mini': compact_menu}" id="main-menu">
 
 
         <!-- BEGIN SIDEBAR MENU -->
@@ -180,7 +180,7 @@
         <div class="clearfix"></div>
         <!-- END SIDEBAR MENU -->
     </div>
-    <div class="footer-widget">
+    <div class="footer-widget" ng-hide="compact_menu">
         <div class="progress transparent progress-small no-radius no-margin">
             <div class="progress-bar progress-bar-success animate-progress-bar" data-percentage="79%" style="width: 79%;"></div>
         </div>
@@ -192,7 +192,7 @@
     </div>
     <!-- END SIDEBAR -->
     <!-- BEGIN PAGE CONTAINER-->
-    <div class="page-content" ng-view>
+    <div class="page-content" ng-class="{'condensed':compact_menu}" ng-view>
         <!-- BEGIN PAGE -->
             <%-body -%>
             <!-- END PAGE -->
@@ -217,6 +217,7 @@
 <% script('/components/pouchdb-nightly.min.js/index.js') -%>
 <% script('/components/angular-pouchdb/angular-pouchdb.js') -%>
 <% script('/components/humanize/humanize.js') -%>
+<% script('/components/nginfinitescroll/build/ng-infinite-scroll.min.js') -%>
 <% script('/components/angular-bootstrap-0.7.0/ui-bootstrap-tpls-0.7.0-SNAPSHOT.min.js') -%>
 <% script('/components/highlightjs/highlight.pack.js') -%>
 <% script('/components/angular-highlightjs/angular-highlightjs.min.js') -%>
