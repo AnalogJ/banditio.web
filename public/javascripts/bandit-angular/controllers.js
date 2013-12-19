@@ -27,7 +27,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
     })
     //Panel Controllers
-    .controller('roomCtrl', function ($scope,$routeParams, socket, banditdb) {
+    .controller('roomCtrl', function ($scope,$routeParams, socket,cfpLoadingBar, banditdb) {
         $scope.room_id = $routeParams.room_id || window.ROOM_ID
 
 
@@ -63,9 +63,11 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                 return;
             }
             $scope.loading_prev_resources = true;
+            cfpLoadingBar.start();
             banditdb.getPreviousResources(5,next_start_key)
                 .then(function(resp){
                     $scope.loading_prev_resources = false;
+                    cfpLoadingBar.complete();
                     next_start_key = resp.next_start_key;
 
 
@@ -82,6 +84,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
                     $scope.resources_left = $scope.prev_resource_times.length +  resp.data_left
                 }).catch(function(err){
                     $scope.loading_prev_resources = false;
+                    cfpLoadingBar.complete()
                 });
         }
         $scope.getPreviousResources();
@@ -107,6 +110,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
             //delete all selected values.
             for(var resource_id in $scope.prev_resource_selection){
                 if($scope.prev_resource_selection[resource_id]){
+
                     banditdb.deleteResource(resource_id).then(function(data){
                         var resource_id = data['id']
                         delete $scope.prev_resource_selection[resource_id];
@@ -162,7 +166,7 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
 
 
     })
-    .controller('resourceCtrl', function ($scope,$routeParams, socket, banditdb) {
+    .controller('resourceCtrl', function ($scope,$routeParams, socket,cfpLoadingBar, banditdb) {
 
 
         console.log('im in the room ctrl');
@@ -180,43 +184,51 @@ angular.module('banditApp.controllers', [ 'banditApp.services','btford.socket-io
         }
 
         console.log($routeParams.resource_id);
+        cfpLoadingBar.start();
         banditdb.db.get($routeParams.resource_id).then(function(data){
             console.log(data);
             $scope.resource = data;
+            return data;
 
-            //attempt to get attachments
-            console.log('attachments')
-            banditdb.db.getAttachment($routeParams.resource_id, 'response_data').then(function(data){
-                var reader = new FileReader();
-                reader.onloadend = function() {
-                    $scope.resource.response.data = reader.result;
-                };
-                reader.readAsText(data);
-            },function(err){
-                console.log(err)
+        }).then(function(){
+                return banditdb.db.getAttachment($routeParams.resource_id, 'response_data').then(function(data){
+                    var reader = new FileReader();
+                    reader.onloadend = function() {
+                        $scope.resource.response.data = reader.result;
+                    };
+                    reader.readAsText(data);
+                },function(err){
+                    console.log(err)
+                })
             })
-            banditdb.db.getAttachment($routeParams.resource_id, 'request_data').then(function(data){
-                var reader = new FileReader();
-                reader.onloadend = function() {
-                    $scope.resource.request.data = reader.result;
-                };
-                reader.readAsText(data);
-            },function(err){
-                console.log(err)
+            .then(function(){
+                return banditdb.db.getAttachment($routeParams.resource_id, 'request_data').then(function(data){
+                    var reader = new FileReader();
+                    reader.onloadend = function() {
+                        $scope.resource.request.data = reader.result;
+                    };
+                    reader.readAsText(data);
+                },function(err){
+                    console.log(err)
+                })
+            })
+            ['finally'](function(){
+                cfpLoadingBar.complete();
             })
 
-        }).catch(function(err){
-                console.log(err)
-            });
+
+
+
     })
-    .controller('meddleCtrl', function ($scope,$routeParams,$sce, socket, banditdb) {
+    .controller('meddleCtrl', function ($scope,$routeParams,$sce, socket,cfpLoadingBar, banditdb) {
         $scope.room_id = $routeParams.room_id || window.ROOM_ID;
         console.log('meddle')
         $scope.loadingFinished = function(){
             $scope.loadingDebugger = false;
-            console.log('finsihed loading.')
+            cfpLoadingBar.complete();
         }
         $scope.loadingDebugger = true;
+        cfpLoadingBar.start();
 
         $scope.debuggerUrl = $sce.trustAsResourceUrl('https://trigger.io/catalyst/client/#'+($scope.room_id || 'default'));
 

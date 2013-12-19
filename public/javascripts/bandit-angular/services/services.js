@@ -1,4 +1,4 @@
-angular.module('banditApp.services', ['pouchdb'])
+angular.module('banditApp.services', ['pouchdb', ])
 
     .factory('banditdb', function($q,pouchdb) {
         var banditdb = pouchdb.create('banditdb')

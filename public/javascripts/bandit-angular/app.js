@@ -13,7 +13,9 @@ angular.module('banditApp', ['banditApp.controllers',
         'btford.socket-io',
         'ngRoute',
         'ui.bootstrap',
-        'hljs'
+        'hljs',
+        'chieffancypants.loadingBar',
+        'ngAnimate'
     ]).
     config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
         $routeProvider.when('/capture/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
