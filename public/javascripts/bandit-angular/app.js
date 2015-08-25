@@ -18,12 +18,9 @@ angular.module('banditApp', ['banditApp.controllers',
         'ngAnimate'
     ]).
     config(['$routeProvider', '$locationProvider', function($routeProvider, $locationProvider) {
-        $routeProvider.when('/capture/:room_id', {templateUrl: '/partials/room_template', controller: 'roomCtrl'});
-        $routeProvider.when('/capture/:room_id/:resource_id', {templateUrl: '/partials/resource_template', controller: 'resourceCtrl'});
-        $routeProvider.when('/settings', {templateUrl: '/partials/settings_template', controller: 'settingsCtrl'});
+        $routeProvider.when('/capture/:room_id', {templateUrl: '/partials/capture_template', controller: 'roomCtrl'});
         $routeProvider.when('/about', {templateUrl: '/partials/coming_soon_template'});
         $routeProvider.when('/home', {templateUrl: '/partials/home_template'});
-        $routeProvider.when('/meddle/:room_id', {templateUrl: '/partials/meddle_template', controller: 'meddleCtrl'});
 
         $routeProvider.otherwise({redirectTo: '/home'});
         $locationProvider.hashPrefix('!');
@@ -37,24 +34,3 @@ angular.module('banditApp', ['banditApp.controllers',
         delete $httpProvider.defaults.headers.common['X-Requested-With'];
 
     })
-    .config(function (socketProvider) {
-        var mySocket = io.connect('http://localhost:5000');
-        //var mySocket = io.connect('http://proxy.bandit.io:5000');
-
-
-        //roomID should be taken from the following places in order.
-        // ROOM_ID written to the page
-
-
-        // do stuff with mySocket
-        mySocket.on('connect', function() {
-            mySocket.emit('join', window.ROOM_ID);
-        })
-//        mySocket.on('message', function(msg) {
-//            console.log('[BANDIT-WEB]: '+ msg)
-//
-//            //Parse the message, checking for message types that are important to us. This parsing will be done by Angular in the future.
-//        });
-
-        socketProvider.ioSocket(mySocket);
-    });

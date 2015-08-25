@@ -122,25 +122,20 @@
         <ul>
             <li class="start" ng-class="{active: currentPage('home')}"> <a href="/home"> <i class="icon-custom-extra"></i> <span class="title">Home</span></a>
             </li>
-            <li  ng-class="{active: currentPage('capture')}"> <a href="/capture/{{room_id}}">
-                    <i class="icon-cloud-download"></i> <span class="title">Capture</span>
-                    <span ng-if="missed_requests" class="badge badge-important pull-right">{{missed_requests |  number:0}}</span>
-                </a>
-            </li>
-            <li ng-class="{active: currentPage('meddle')}"> <a href="/meddle/{{room_id}}"> <i class="icon-bug"></i> <span class="title">Meddle</span></a>
-            </li>
-            <li ng-class="{active: currentPage('settings')}"> <a href="/settings"> <i class="icon-cog"></i> <span class="title">Settings</span> </a> </li>
-
             <li ng-class="{active: currentPage('about')}"> <a href="/about"> <i class="icon-info"></i> <span class="title">About</span></a>
             </li>
         </ul>
         <div class="side-bar-widgets">
-            <p class="menu-title">Shortcuts <span class="pull-right"></span></p>
+            <p class="menu-title">Proxy <span class="pull-right"></span></p>
             <ul class="folders" id="folders">
-                <li><a href="#"><div class="status-icon green"></div> Active Pages </a> </li>
-                <li><a href="#"><div class="status-icon red"></div> Errors </a> </li>
-                <li><a href="#"><div class="status-icon yellow"></div> Favorites </a> </li>
-                <li id="folder-input" class="folder-input" style="display:none"><input type="text" placeholder="Name of folder" class="no-boarder folder-name" name="" id="folder-name"></li>
+                <li>
+                    <a href="/capture/{{room_id}}" ng-class="{green: currentPage('capture')}">
+                        <div class="status-icon green"></div>
+                        <span class="title">Requests</span>
+                        <span ng-if="missed_requests" class="badge badge-important pull-right">{{missed_requests |  number:0}}</span>
+                    </a>
+                </li>
+
             </ul>
             <p class="menu-title">Connection Info</p>
             <div class="status-widget">

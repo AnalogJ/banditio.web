@@ -1,0 +1,46 @@
+<div class="clearfix"></div>
+<div class="content">
+
+
+    <ul class="breadcrumb">
+        <li>
+            <p>Bandit.io<p>
+        </li>
+        <i class="icon-angle-right"></i>
+        <li><a href="/capture/{{room_id}}">Network Requests</a></li>
+        <li><a href="/capture/{{room_id}}/{{resource_id}}" class="active">Request Details</a></li>
+    </ul>
+    <div class="page-title">
+        <a href="/capture/{{room_id}}"><i class="icon-custom-left"></i></a>
+        <h3>Capture - <span class="semi-bold">{{resource.request.hostname}}</span></h3>
+    </div>
+    <div class="row">
+        <div class="col-md-12">
+
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="grid simple ">
+                        <div class="grid-title">
+                            <h4>Remote <span class="semi-bold">Debug</span></h4>
+                            <div class="tools">
+                                <a ng-click="request_data_collapsed = !request_data_collapsed" ng-class="{collapse: !request_data_collapsed, expand:request_data_collapsed}"></a>
+                                <a href="#grid-config" data-toggle="modal" class="config"></a>
+                                <a href="javascript:;" class="remove"></a>
+                            </div>
+                        </div>
+                        <div class="grid-body no-border" >
+                            <div class="row-fluid">
+
+                            	<!--<iframe style="width:100%;height:100%;min-height:500px;"src="https://chrome-devtools-frontend.appspot.com/serve_rev/@192159/devtools.html?ws=192.168.99.100:9000/ws/all"></iframe>-->
+                            	<iframe style="width:100%;height:100%;min-height:500px;"src="https://chrome-devtools-frontend.appspot.com/serve_rev/@195284/devtools.html?ws=192.168.99.100:9000/ws/all"></iframe>
+
+                            </div>
+						</div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

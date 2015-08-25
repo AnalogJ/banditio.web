@@ -32,6 +32,7 @@ app.use(require('less-middleware')({
     //compress: true
 }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/devtools', express.static(path.join(__dirname, 'devtools')));
 
 // development only
 if ('development' == app.get('env')) {
@@ -52,8 +53,6 @@ app.post('/example_request', routes.example_request);
 app.get('/', routes.wildcard);
 app.get('/home', routes.wildcard);
 app.get('/capture/:room_id?/:opt?', routes.wildcard); //view currently active messages.
-app.get('/meddle', routes.wildcard);
-app.get('/meddle/:room_id',routes.wildcard);
 app.get('/about', routes.wildcard);
 
 /*
