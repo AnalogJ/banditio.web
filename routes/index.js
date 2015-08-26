@@ -16,7 +16,7 @@ exports.meddle = function(req, res){
 */
 
 exports.example_request = function(req, res){
-    request.get('http://www.example.com/', {'proxy':'http://'+req.body.room_id+':X@proxy.bandit.io:8080'});
+    request.get('http://www.example.com/', {'proxy':'http://'+req.body.room_id+':X@proxy.bandit.io:8000'});
     res.end()
 }
 
