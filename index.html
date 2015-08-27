@@ -1,0 +1,212 @@
+<!doctype html>
+
+<html ng-app="banditApp">
+
+<head>
+    <title>Bandit.io - </title>
+    <meta charset="utf-8">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.0.3/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="http://yandex.st/highlightjs/7.3/styles/github.min.css">
+
+
+    <link rel="apple-touch-icon-precomposed" sizes="152x152" href="/images/favicon-152.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="/images/favicon-114.png">
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/images/favicon-144.png">
+    <link rel="apple-touch-icon-precomposed" href="/images/favicon-57.png">
+    <link rel="icon" href="/images/favicon-32.png" sizes="32x32">
+    <meta name="msapplication-TileColor" content="#FFFFFF">
+    <meta name="msapplication-TileImage" content="/images/favicon-144.png">
+</head>
+
+<body ng-controller="navCtrl">
+
+
+<!-- BEGIN HEADER -->
+<div class="header navbar navbar-inverse ">
+    <!-- BEGIN TOP NAVIGATION BAR -->
+    <div class="navbar-inner">
+        <div class="header-seperation" ng-hide="compact_menu">
+            <ul class="nav pull-left notifcation-center" id="main-menu-toggle-wrapper" style="display:none">
+                <li class="dropdown"> <a id="main-menu-toggle" href="#main-menu"  class="" >
+                    <div class="iconset top-menu-toggle-white"></div>
+                </a> </li>
+            </ul>
+            <!-- BEGIN LOGO -->
+            <a href="/home"><img src="/images/banner-white.png" class="logo"  width="106" height="21"/></a>
+            <!-- END LOGO -->
+            <ul class="nav pull-right notifcation-center">
+                <li class="dropdown" id="header_task_bar"> <a href="/home" class="dropdown-toggle active" data-toggle="">
+                    <div class="iconset top-home"></div>
+                </a> </li>
+            </ul>
+        </div>
+        <!-- END RESPONSIVE MENU TOGGLER -->
+        <div class="header-quick-nav" >
+            <!-- BEGIN TOP NAVIGATION MENU -->
+            <div class="pull-left">
+                <ul class="nav quick-section">
+                    <li class="quicklinks"> <a ng-click="compact_menu = !compact_menu" class="" id="layout-condensed-toggle" >
+                        <div class="iconset top-menu-toggle-dark"></div>
+                    </a> </li>
+                </ul>
+                <ul class="nav quick-section">
+
+                    <li class="quicklinks">
+                        <div class="input-prepend inside search-form no-boarder"> <span class="add-on" ng-class="{'input-focus': search_focused}"> <a href="#" class="" >
+                            <div class="iconset top-search"></div>
+                        </a></span>
+                            <input name="" type="text" class="no-boarder" ng-focus="search_focused = true" ng-blur="search_focused = false" placeholder="Search {{current_page_name}}" style="width:250px;">
+                        </div>
+                    </li>
+
+                </ul>
+            </div>
+            <!-- END TOP NAVIGATION MENU -->
+            <!-- BEGIN CHAT TOGGLER -->
+            <div class="pull-right">
+
+                <ul class="nav quick-section ">
+                    <li class="quicklinks">
+                        <a data-toggle="dropdown" class="dropdown-toggle  pull-right" href="#">
+                            <div class="iconset top-settings-dark "></div>
+                        </a>
+                        <ul class="dropdown-menu  pull-right" role="menu" aria-labelledby="dropdownMenu">
+                            <li><a href="user-profile.html"> My Account</a>
+                            </li>
+                            <li><a href="calender.html">My Calendar</a>
+                            </li>
+                            <li><a href="email.html"> My Inbox&nbsp;&nbsp;<span class="badge badge-important animated bounceIn">2</span></a>
+                            </li>
+                            <li class="divider"></li>
+                            <li><a href="login.html"><i class="icon-off"></i>&nbsp;&nbsp;Log Out</a></li>
+                        </ul>
+                    </li>
+                    <li class="quicklinks"> <span class="h-seperate"></span></li>
+                    <li class="quicklinks">
+                        <a id="chat-menu-toggle" href="#sidr" class="chat-menu-toggle" ><div class="iconset top-chat-dark "><span class="badge badge-important hide" id="chat-message-count">1</span></div>
+                        </a>
+                        <div class="simple-chat-popup chat-menu-toggle hide" >
+                            <div class="simple-chat-popup-arrow"></div><div class="simple-chat-popup-inner">
+                            <div style="width:100px">
+                                <div class="semi-bold">David Nester</div>
+                                <div class="message">Hey you there </div>
+                            </div>
+                        </div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <!-- END CHAT TOGGLER -->
+        </div>
+        <!-- END TOP NAVIGATION MENU -->
+    </div>
+    <!-- END TOP NAVIGATION BAR -->
+</div>
+<!-- END HEADER -->
+
+<!-- BEGIN CONTAINER -->
+<div class="page-container row-fluid">
+    <!-- BEGIN SIDEBAR -->
+    <div class="page-sidebar" ng-class="{'mini': compact_menu}" id="main-menu">
+
+
+        <!-- BEGIN SIDEBAR MENU -->
+        <p class="menu-title">BROWSE</p>
+        <ul>
+            <li class="start" ng-class="{active: currentPage('home')}"> <a href="/home"> <i class="icon-custom-extra"></i> <span class="title">Home</span></a>
+            </li>
+            <li ng-class="{active: currentPage('about')}"> <a href="/about"> <i class="icon-info"></i> <span class="title">About</span></a>
+            </li>
+        </ul>
+        <div class="side-bar-widgets">
+            <p class="menu-title">Proxy <span class="pull-right"></span></p>
+            <ul class="folders" id="folders">
+                <li>
+                    <a href="/capture/{{room_id}}" ng-class="{green: currentPage('capture')}">
+                        <div class="status-icon green"></div>
+                        <span class="title">Requests</span>
+                        <span ng-if="missed_requests" class="badge badge-important pull-right">{{missed_requests |  number:0}}</span>
+                    </a>
+                </li>
+
+            </ul>
+            <p class="menu-title">Connection Info</p>
+            <div class="status-widget">
+                <div class="status-widget-wrapper">
+                    <div class="title">proxy.bandit.io:80<a href="#" class="remove-widget"></a></div>
+                    <p>Proxy Host</p>
+                </div>
+            </div>
+            <div class="status-widget">
+                <div class="status-widget-wrapper">
+                    <div class="title">{{room_id}}<a href="#" class="remove-widget"></a></div>
+                    <p>Username</p>
+                </div>
+            </div>
+            <div class="status-widget">
+                <div class="status-widget-wrapper">
+                    <div class="title">X<a href="#" class="remove-widget"></a></div>
+                    <p>Password</p>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- BEGIN MINI-PROFILE -->
+        <div class="user-info-wrapper">
+            <div class="profile-wrapper">
+                <img src="https://0.gravatar.com/avatar/57a90b685ef5eb6b17edf33fa91c4ea8?d=https%3A%2F%2Fidenticons.github.com%2F6d4097c2948116359710a5e987665070.png&r=x&s=440"  width="69" height="69" />
+            </div>
+            <div class="user-info">
+                <div class="greeting">Brought to you by</div>
+                <div class="username">Analog <span class="semi-bold">J</span></div>
+                <div class="status"><a href="http://www.thesparktree.com">thesparktree.com</a></div>
+            </div>
+        </div>
+        <!-- END MINI-PROFILE -->
+
+        <div class="clearfix"></div>
+        <!-- END SIDEBAR MENU -->
+    </div>
+    <div class="footer-widget" ng-hide="compact_menu">
+        <div class="progress transparent progress-small no-radius no-margin">
+            <div class="progress-bar progress-bar-success animate-progress-bar" data-percentage="79%" style="width: 79%;"></div>
+        </div>
+        <div class="pull-right">
+            <div class="details-status">
+                <span class="animate-number" data-value="86" data-animation-duration="560">86</span>%
+            </div>
+            <a href="lockscreen.html"><i class="icon-off"></i></a></div>
+    </div>
+    <!-- END SIDEBAR -->
+    <!-- BEGIN PAGE CONTAINER-->
+    <div class="page-content" ng-class="{'condensed':compact_menu}" ng-view>
+        <!-- BEGIN PAGE -->
+        <!-- END PAGE -->
+    </div>
+</div>
+
+<!-- END CONTAINER -->
+<!-- BEGIN FOOTER -->
+<!-- END FOOTER -->
+
+<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.2/angular.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.2/angular-route.min.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/angularjs/1.2.2/angular-animate.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
+<script src="/javascripts/bandit-angular/app.js"></script>
+<script src="/javascripts/bandit-angular/services/services.js"></script>
+<script src="/javascripts/bandit-angular/controllers.js"></script>
+<script src="/components/pouchdb-nightly.min.js/index.js"></script>
+<script src="/components/angular-pouchdb/angular-pouchdb.js"></script>
+<script src="/components/angular-bootstrap-0.7.0/ui-bootstrap-tpls-0.7.0-SNAPSHOT.min.js"></script>
+<script src="/components/angular-loading-bar/build/loading-bar.min.js"></script>
+</body>
+
+</html>
