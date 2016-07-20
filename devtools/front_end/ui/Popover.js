@@ -47,7 +47,7 @@ WebInspector.Popover = function(popoverHelper)
     this._hideBound = this.hide.bind(this);
 }
 
-WebInspector.Popover._classNamePrefix = "popover custom-popup-vertical-scroll custom-popup-horizontal-scroll";
+WebInspector.Popover._classNamePrefix = "popover";
 
 WebInspector.Popover.prototype = {
     /**
@@ -164,7 +164,7 @@ WebInspector.Popover.prototype = {
     positionElement: function(anchorElement, preferredWidth, preferredHeight, arrowDirection)
     {
         const borderWidth = this._hasNoMargins ? 0 : 8;
-        const scrollerWidth = this._hasFixedHeight ? 0 : 11;
+        const scrollerWidth = this._hasFixedHeight ? 0 : 14;
         const arrowHeight = this._hasNoMargins ? 8 : 15;
         const arrowOffset = 10;
         const borderRadius = 4;
@@ -186,12 +186,14 @@ WebInspector.Popover.prototype = {
         var verticalAlignment;
         var roomAbove = anchorBox.y;
         var roomBelow = totalHeight - anchorBox.y - anchorBox.height;
+        this._popupArrowElement.hidden = false;
 
         if ((roomAbove > roomBelow) || (arrowDirection === WebInspector.Popover.Orientation.Bottom)) {
             // Positioning above the anchor.
             if ((anchorBox.y > newElementPosition.height + arrowHeight + borderRadius) || (arrowDirection === WebInspector.Popover.Orientation.Bottom))
                 newElementPosition.y = anchorBox.y - newElementPosition.height - arrowHeight;
             else {
+                this._popupArrowElement.hidden = true;
                 newElementPosition.y = borderRadius;
                 newElementPosition.height = anchorBox.y - borderRadius * 2 - arrowHeight;
                 if (this._hasFixedHeight && newElementPosition.height < preferredHeight) {
@@ -204,6 +206,7 @@ WebInspector.Popover.prototype = {
             // Positioning below the anchor.
             newElementPosition.y = anchorBox.y + anchorBox.height + arrowHeight;
             if ((newElementPosition.y + newElementPosition.height + borderRadius >= totalHeight) && (arrowDirection !== WebInspector.Popover.Orientation.Top)) {
+                this._popupArrowElement.hidden = true;
                 newElementPosition.height = totalHeight - borderRadius - newElementPosition.y;
                 if (this._hasFixedHeight && newElementPosition.height < preferredHeight) {
                     newElementPosition.y = totalHeight - preferredHeight - borderRadius;
@@ -398,7 +401,7 @@ WebInspector.PopoverHelper.prototype = {
     _mouseHover: function(element)
     {
         delete this._hoverTimer;
-
+        this._hoverElement = element;
         this._hidePopover();
         this._popover = new WebInspector.Popover(this);
         this._showPopover(element, this._popover);

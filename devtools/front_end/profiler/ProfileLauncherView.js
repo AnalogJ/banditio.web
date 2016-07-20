@@ -87,7 +87,7 @@ WebInspector.ProfileLauncherView.prototype = {
 
     _updateLoadButtonLayout: function()
     {
-        this._loadButton.classList.toggle("multi-target", WebInspector.targetManager.targetsWithJSContext().length > 1);
+        this._loadButton.classList.toggle("multi-target", WebInspector.targetManager.targets(WebInspector.Target.Capability.JS).length > 1);
     },
 
     /**
@@ -106,7 +106,7 @@ WebInspector.ProfileLauncherView.prototype = {
 
     _controlButtonClicked: function()
     {
-        this._panel.toggleRecordButton();
+        this._panel.toggleRecord();
     },
 
     _loadButtonClicked: function()
@@ -219,7 +219,7 @@ WebInspector.MultiProfileLauncherView.prototype = {
 
     _controlButtonClicked: function()
     {
-        this._panel.toggleRecordButton();
+        this._panel.toggleRecord();
     },
 
     _updateControls: function()

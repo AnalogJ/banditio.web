@@ -35,13 +35,15 @@ from os import path
 
 import errno
 import os
+import shlex
 import shutil
 import sys
 from xml.dom import minidom
 
 kDevToolsResourcePrefix = 'IDR_DEVTOOLS_'
 kGrdTemplate = '''<?xml version="1.0" encoding="UTF-8"?>
-<grit latest_public_release="0" current_release="1">
+<grit latest_public_release="0" current_release="1"
+      output_all_resource_defines="false">
   <outputs>
     <output filename="grit/devtools_resources.h" type="rc_header">
       <emit emit_type='prepend'></emit>
@@ -67,14 +69,36 @@ class ParsedArgs:
 
 
 def parse_args(argv):
-    static_files_list_position = argv.index('--static_files_list')
+    # The arguments are of the format:
+    #   [ <source_files> ]*
+    #   [ (--static_files_list <file>) | (--static_files_args <file>) ]
+    #   --relative_path_dirs [ <directory> ]*
+    #   --images [ <image_dirs> ]*
+    #   --output <output_file>
+    #
+    # --static_files_list means the file contains newline-separated filenames
+    # from GYP, and --static_files_args means the file looks like a shell
+    # string from GN.
     relative_path_dirs_position = argv.index('--relative_path_dirs')
     images_position = argv.index('--images')
     output_position = argv.index('--output')
-    static_files_list_path = argv[static_files_list_position + 1]
-    source_files = argv[:static_files_list_position]
-    with open(static_files_list_path, 'r') as static_list_file:
-        source_files.extend([line.rstrip('\n') for line in static_list_file.readlines()])
+
+    if '--static_files_list' in argv:
+        # This branch can be removed when GYP support is no longer necessary.
+        static_files_list_position = argv.index('--static_files_list')
+        static_files_list_path = argv[static_files_list_position + 1]
+        source_files = argv[:static_files_list_position]
+        with open(static_files_list_path, 'r') as static_list_file:
+            source_files.extend([line.rstrip('\n') for line in static_list_file.readlines()])
+    elif '--static_files_args' in argv:
+        static_files_args_position = argv.index('--static_files_args')
+        static_files_args_path = argv[static_files_args_position + 1]
+        source_files = argv[:static_files_args_position]
+        with open(static_files_args_path, 'r') as static_args_file:
+            source_files.extend(shlex.split(static_args_file))
+    else:
+        source_files = argv[:relative_path_dirs_position]
+
     relative_path_dirs = argv[relative_path_dirs_position + 1:images_position]
     image_dirs = argv[images_position + 1:output_position]
     return ParsedArgs(source_files, relative_path_dirs, image_dirs, argv[output_position + 1])

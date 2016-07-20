@@ -4,12 +4,11 @@
 
 /**
  * @constructor
- * @extends {WebInspector.StylesSidebarPane.BaseToolbarPaneWidget}
- * @param {!WebInspector.ToolbarItem} toolbarItem
+ * @extends {WebInspector.Widget}
  */
-WebInspector.ElementStatePaneWidget = function(toolbarItem)
+WebInspector.ElementStatePaneWidget = function()
 {
-    WebInspector.StylesSidebarPane.BaseToolbarPaneWidget.call(this, toolbarItem);
+    WebInspector.Widget.call(this);
     this.element.className = "styles-element-state-pane";
     this.element.createChild("div").createTextChild(WebInspector.UIString("Force element state"));
     var table = createElementWithClass("table", "source-code");
@@ -25,7 +24,7 @@ WebInspector.ElementStatePaneWidget = function(toolbarItem)
         var node = WebInspector.context.flavor(WebInspector.DOMNode);
         if (!node)
             return;
-        WebInspector.CSSStyleModel.fromNode(node).forcePseudoState(node, event.target.state, event.target.checked);
+        WebInspector.CSSModel.fromNode(node).forcePseudoState(node, event.target.state, event.target.checked);
     }
 
     /**
@@ -53,6 +52,7 @@ WebInspector.ElementStatePaneWidget = function(toolbarItem)
     tr.appendChild(createCheckbox.call(null, "visited"));
 
     this.element.appendChild(table);
+    WebInspector.context.addFlavorChangeListener(WebInspector.DOMNode, this._update, this);
 }
 
 WebInspector.ElementStatePaneWidget.prototype = {
@@ -65,51 +65,49 @@ WebInspector.ElementStatePaneWidget.prototype = {
             return;
 
         if (this._target) {
-            var cssModel = WebInspector.CSSStyleModel.fromTarget(this._target);
-            cssModel.removeEventListener(WebInspector.CSSStyleModel.Events.PseudoStateForced, this._pseudoStateForced, this)
+            var cssModel = WebInspector.CSSModel.fromTarget(this._target);
+            cssModel.removeEventListener(WebInspector.CSSModel.Events.PseudoStateForced, this._update, this)
         }
         this._target = target;
         if (target) {
-            var cssModel = WebInspector.CSSStyleModel.fromTarget(target);
-            cssModel.addEventListener(WebInspector.CSSStyleModel.Events.PseudoStateForced, this._pseudoStateForced, this)
+            var cssModel = WebInspector.CSSModel.fromTarget(target);
+            cssModel.addEventListener(WebInspector.CSSModel.Events.PseudoStateForced, this._update, this)
         }
-    },
-
-    /**
-     * @param {!WebInspector.Event} event
-     */
-    _pseudoStateForced: function(event)
-    {
-        var node = /** @type{!WebInspector.DOMNode} */(event.data.node);
-        if (node === WebInspector.context.flavor(WebInspector.DOMNode))
-            this._updateInputs(node);
     },
 
     /**
      * @override
-     * @param {?WebInspector.DOMNode} newNode
      */
-    onNodeChanged: function(newNode)
+    wasShown: function()
     {
-        this._updateTarget(newNode? newNode.target() : null);
-        if (newNode)
-            this._updateInputs(newNode);
+        this._update();
     },
 
-    /**
-     * @param {!WebInspector.DOMNode} node
-     */
-    _updateInputs: function(node)
+    _update: function()
     {
-        var nodePseudoState = WebInspector.CSSStyleModel.fromNode(node).pseudoState(node);
-        var inputs = this._inputs;
-        for (var i = 0; i < inputs.length; ++i) {
-            inputs[i].disabled = !!node.pseudoType();
-            inputs[i].checked = nodePseudoState.indexOf(inputs[i].state) >= 0;
+        if (!this.isShowing())
+            return;
+
+        var node = WebInspector.context.flavor(WebInspector.DOMNode);
+        if (node)
+            node = node.enclosingElementOrSelf();
+
+        this._updateTarget(node ? node.target() : null);
+        if (node) {
+            var nodePseudoState = WebInspector.CSSModel.fromNode(node).pseudoState(node);
+            for (var input of this._inputs) {
+                input.disabled = !!node.pseudoType();
+                input.checked = nodePseudoState.indexOf(input.state) >= 0;
+            }
+        } else {
+            for (var input of this._inputs) {
+                input.disabled = true;
+                input.checked = false;
+            }
         }
     },
 
-    __proto__: WebInspector.StylesSidebarPane.BaseToolbarPaneWidget.prototype
+    __proto__: WebInspector.Widget.prototype
 }
 
 /**
@@ -118,18 +116,16 @@ WebInspector.ElementStatePaneWidget.prototype = {
  */
 WebInspector.ElementStatePaneWidget.ButtonProvider = function()
 {
-    this._button = new WebInspector.ToolbarButton(WebInspector.UIString("Toggle Element State"), "pin-toolbar-item");
+    this._button = new WebInspector.ToolbarToggle(WebInspector.UIString("Toggle Element State"), "", WebInspector.UIString(":hov"));
     this._button.addEventListener("click", this._clicked, this);
-    this._view = new WebInspector.ElementStatePaneWidget(this.item());
-    WebInspector.context.addFlavorChangeListener(WebInspector.DOMNode, this._nodeChanged, this);
-    this._nodeChanged();
+    this._button.element.classList.add("monospace");
+    this._view = new WebInspector.ElementStatePaneWidget();
 }
 
 WebInspector.ElementStatePaneWidget.ButtonProvider.prototype = {
     _clicked: function()
     {
-        var stylesSidebarPane = WebInspector.ElementsPanel.instance().sidebarPanes.styles;
-        stylesSidebarPane.showToolbarPane(!this._view.isShowing() ? this._view : null);
+        WebInspector.ElementsPanel.instance().showToolbarPane(!this._view.isShowing() ? this._view : null, this._button);
     },
 
     /**
@@ -139,13 +135,5 @@ WebInspector.ElementStatePaneWidget.ButtonProvider.prototype = {
     item: function()
     {
         return this._button;
-    },
-
-    _nodeChanged: function()
-    {
-        var enabled = !!WebInspector.context.flavor(WebInspector.DOMNode);
-        this._button.setEnabled(enabled);
-        if (!enabled && this._button.toggled())
-            WebInspector.ElementsPanel.instance().sidebarPanes.styles.showToolbarPane(null);
     }
 }

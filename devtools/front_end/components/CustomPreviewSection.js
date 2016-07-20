@@ -43,9 +43,8 @@ WebInspector.CustomPreviewComponent = function(object)
     this._object = object;
     this._customPreviewSection = new WebInspector.CustomPreviewSection(object);
     this.element  = createElementWithClass("span", "source-code");
-    var shadowRoot = WebInspector.createShadowRootWithCoreStyles(this.element);
+    var shadowRoot = WebInspector.createShadowRootWithCoreStyles(this.element, "components/customPreviewSection.css");
     this.element.addEventListener("contextmenu", this._contextMenuEventFired.bind(this), false);
-    shadowRoot.appendChild(WebInspector.Widget.createStyleElement("components/customPreviewSection.css"));
     shadowRoot.appendChild(this._customPreviewSection.element());
 }
 
@@ -63,7 +62,7 @@ WebInspector.CustomPreviewComponent.prototype = {
     {
         var contextMenu = new WebInspector.ContextMenu(event);
         if (this._customPreviewSection)
-            contextMenu.appendItem(WebInspector.UIString.capitalize("Show as Javascript ^object" ), this._disassemble.bind(this));
+            contextMenu.appendItem(WebInspector.UIString.capitalize("Show as Javascript ^object"), this._disassemble.bind(this));
         contextMenu.appendApplicableItems(this._object);
         contextMenu.show();
     },
@@ -117,7 +116,7 @@ WebInspector.CustomPreviewSection.prototype = {
             return createElement("span");
         }
         var element = createElement(/** @type {string} */ (tagName));
-        if ((typeof object[0] == "object") && !Array.isArray(object[0])) {
+        if ((typeof object[0] === "object") && !Array.isArray(object[0])) {
             var attributes = object.shift();
             for (var key in attributes) {
                 var value = attributes[key];
@@ -185,10 +184,11 @@ WebInspector.CustomPreviewSection.prototype = {
          * @suppressGlobalPropertiesCheck
          * @suppress {undefinedVars}
          * @this {Object}
+         * @param {function(!Object, *):*} bindRemoteObject
          * @param {*=} formatter
          * @param {*=} config
          */
-        function load(formatter, config)
+        function load(bindRemoteObject, formatter, config)
         {
             /**
              * @param {*} jsonMLObject
@@ -211,7 +211,7 @@ WebInspector.CustomPreviewSection.prototype = {
                     if (typeof originObject === "undefined")
                         throw "Illegal format: obligatory attribute \"object\" isn't specified";
 
-                    jsonMLObject[1] = bindRemoteObject(originObject, false, false, null, false, config);
+                    jsonMLObject[1] = bindRemoteObject(originObject, config);
                     startIndex = 2;
                 }
                 for (var i = startIndex; i < jsonMLObject.length; ++i)
@@ -229,7 +229,7 @@ WebInspector.CustomPreviewSection.prototype = {
         }
 
         var customPreview = this._object.customPreview();
-        var args = [{objectId: customPreview.formatterObjectId}];
+        var args = [{objectId: customPreview.bindRemoteObjectFunctionId}, {objectId: customPreview.formatterObjectId}];
         if (customPreview.configObjectId)
             args.push({objectId: customPreview.configObjectId});
         this._object.callFunctionJSON(load, args, onBodyLoaded.bind(this));

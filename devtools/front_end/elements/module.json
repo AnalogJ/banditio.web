@@ -4,7 +4,7 @@
             "type": "@WebInspector.PanelFactory",
             "name": "elements",
             "title": "Elements",
-            "order": 0,
+            "order": 10,
             "className": "WebInspector.ElementsPanelFactory"
         },
         {
@@ -23,22 +23,29 @@
             "className": "WebInspector.ElementsPanel.DOMNodeRevealer"
         },
         {
+            "type": "@WebInspector.Revealer",
+            "contextTypes": ["WebInspector.CSSProperty" ],
+            "className": "WebInspector.ElementsPanel.CSSPropertyRevealer"
+        },
+        {
             "type": "setting",
             "category": "Elements",
+            "order": 0,
             "title": "Color format:",
             "settingName": "colorFormat",
             "settingType": "enum",
             "defaultValue": "original",
             "options": [
-                ["As authored", "original"],
-                ["HEX: #DAC0DE", "hex", true],
-                ["RGB: rgb(128, 255, 255)", "rgb", true],
-                ["HSL: hsl(300, 80%, 90%)", "hsl", true]
+                { "title": "Set color format as authored", "text": "As authored", "value": "original" },
+                { "title": "Set color format to HEX", "text": "HEX: #dac0de", "value": "hex", "raw": true },
+                { "title": "Set color format to RGB", "text": "RGB: rgb(128, 255, 255)", "value": "rgb", "raw": true },
+                { "title": "Set color format to HSL", "text": "HSL: hsl(300, 80%, 90%)", "value": "hsl", "raw": true }
             ]
         },
         {
             "type": "setting",
             "category": "Elements",
+            "order":1,
             "title": "Show user agent shadow DOM",
             "settingName": "showUAShadowDOM",
             "settingType": "boolean",
@@ -47,24 +54,24 @@
         {
             "type": "setting",
             "category": "Elements",
+            "order": 2,
             "title": "Word wrap",
             "settingName": "domWordWrap",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                { "value": true, "title": "Enable DOM word wrap" },
+                { "value": false, "title": "Disable DOM word wrap" }
+            ]
         },
         {
             "type": "setting",
             "category": "Elements",
-            "title": "Show rulers",
-            "settingName": "showMetricsRulers",
+            "order": 4,
+            "title": "Reveal DOM node on hover.",
+            "settingName": "highlightNodeOnHoverInOverlay",
             "settingType": "boolean",
-            "defaultValue": false
-        },
-        {
-            "type": "@WebInspector.ToolbarItem.Provider",
-            "className": "WebInspector.StylesSidebarPane.AddNewRuleButtonProvider",
-            "order": 0,
-            "location": "styles-sidebarpane-toolbar"
+            "defaultValue": true
         },
         {
             "type": "@WebInspector.ToolbarItem.Provider",
@@ -73,8 +80,21 @@
             "location": "styles-sidebarpane-toolbar"
         },
         {
+            "type": "@WebInspector.ToolbarItem.Provider",
+            "className": "WebInspector.ClassesPaneWidget.ButtonProvider",
+            "order": 2,
+            "location": "styles-sidebarpane-toolbar"
+        },
+        {
+            "type": "@WebInspector.ToolbarItem.Provider",
+            "className": "WebInspector.StylesSidebarPane.ButtonProvider",
+            "order": 100,
+            "location": "styles-sidebarpane-toolbar"
+        },
+        {
             "type": "@WebInspector.ActionDelegate",
             "actionId": "elements.hide-element",
+            "contextTypes": ["WebInspector.ElementsPanel"],
             "className": "WebInspector.ElementsActionDelegate",
             "bindings": [
                 {
@@ -85,6 +105,7 @@
         {
             "type": "@WebInspector.ActionDelegate",
             "actionId": "elements.edit-as-html",
+            "contextTypes": ["WebInspector.ElementsPanel"],
             "className": "WebInspector.ElementsActionDelegate",
             "bindings": [
                 {
@@ -99,8 +120,40 @@
         },
         {
             "type": "@WebInspector.DOMPresentationUtils.MarkerDecorator",
-            "className": "WebInspector.ElementsPanel.HiddenMarkerDecorator",
-            "marker": "hidden-marker"
+            "className": "WebInspector.DOMPresentationUtils.GenericDecorator",
+            "marker": "hidden-marker",
+            "title": "Element is hidden",
+            "color": "#555"
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "elements.toggle-element-search",
+            "className": "WebInspector.InspectElementModeController.ToggleSearchActionDelegate",
+            "title": "Select an element in the page to inspect it",
+            "iconClass": "node-search-toolbar-item",
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+Shift+C"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+Shift+C"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ToolbarItem.Provider",
+            "actionId": "elements.toggle-element-search",
+            "location": "main-toolbar-left",
+            "order": 0
+        },
+        {
+            "type": "@WebInspector.ToolbarItem.Provider",
+            "className": "WebInspector.InspectElementModeController.LayoutEditorButtonProvider",
+            "order": 4,
+            "location": "styles-sidebarpane-toolbar",
+            "experiment": "layoutEditor"
         }
     ],
     "dependencies": [
@@ -108,26 +161,27 @@
         "extensions"
     ],
     "scripts": [
+        "InspectElementModeController.js",
         "BezierUI.js",
-        "StylesPopoverHelper.js",
+        "ColorSwatchPopoverIcon.js",
         "BezierEditor.js",
-        "Spectrum.js",
+        "ComputedStyleModel.js",
         "ElementsBreadcrumbs.js",
         "ElementsSidebarPane.js",
         "ElementsSidebarView.js",
         "ElementsTreeElement.js",
         "ElementsTreeOutline.js",
-        "SharedSidebarModel.js",
         "EventListenersWidget.js",
         "MetricsSidebarPane.js",
         "PlatformFontsWidget.js",
         "PropertiesWidget.js",
         "PropertyChangeHighlighter.js",
-        "StylesSectionModel.js",
         "StylesSidebarPane.js",
         "ComputedStyleWidget.js",
+        "ElementsPanel.js",
+        "ClassesPaneWidget.js",
         "ElementStatePaneWidget.js",
-        "ElementsPanel.js"
+        "ElementsTreeElementHighlighter.js"
     ],
     "resources": [
         "bezierEditor.css",
@@ -135,6 +189,6 @@
         "computedStyleSidebarPane.css",
         "elementsPanel.css",
         "elementsTreeOutline.css",
-        "spectrum.css"
+        "platformFontsWidget.css"
     ]
 }

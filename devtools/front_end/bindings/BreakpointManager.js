@@ -86,7 +86,7 @@ WebInspector.BreakpointManager.prototype = {
         var networkURL = this._networkMapping.networkURL(uiSourceCode)
         if (!networkURL)
             return "";
-        return uiSourceCode.uri();
+        return uiSourceCode.url();
     },
 
     /**
@@ -163,7 +163,7 @@ WebInspector.BreakpointManager.prototype = {
     {
         var uiSourceCode = /** @type {!WebInspector.UISourceCode} */ (event.data);
         this._restoreBreakpoints(uiSourceCode);
-        if (uiSourceCode.contentType() === WebInspector.resourceTypes.Script || uiSourceCode.contentType() === WebInspector.resourceTypes.Document)
+        if (uiSourceCode.contentType().hasScripts())
             uiSourceCode.addEventListener(WebInspector.UISourceCode.Events.SourceMappingChanged, this._uiSourceCodeMappingChanged, this);
     },
 
@@ -243,7 +243,7 @@ WebInspector.BreakpointManager.prototype = {
             return breakpoint;
         }
         var projectId = uiSourceCode.project().id();
-        var path = uiSourceCode.path();
+        var path = uiSourceCode.url();
         var sourceFileId = this._sourceFileId(uiSourceCode);
         breakpoint = new WebInspector.BreakpointManager.Breakpoint(this, projectId, path, sourceFileId, lineNumber, columnNumber, condition, enabled);
         if (!this._breakpointsForPrimaryUISourceCode.get(uiSourceCode))
@@ -739,8 +739,7 @@ WebInspector.BreakpointManager.TargetBreakpoint = function(debuggerModel, breakp
     this._networkMapping = networkMapping;
     this._debuggerWorkspaceBinding = debuggerWorkspaceBinding;
 
-    /** @type {!Array.<!WebInspector.DebuggerWorkspaceBinding.Location>} */
-    this._liveLocations = [];
+    this._liveLocations = new WebInspector.LiveLocationPool();
 
     /** @type {!Object.<string, !WebInspector.UILocation>} */
     this._uiLocations = {};
@@ -763,10 +762,7 @@ WebInspector.BreakpointManager.TargetBreakpoint.prototype = {
             this._breakpoint._removeUILocation(uiLocations[i]);
 
         this._uiLocations = {};
-
-        for (var i = 0; i < this._liveLocations.length; ++i)
-            this._liveLocations[i].dispose();
-        this._liveLocations = [];
+        this._liveLocations.disposeAll();
     },
 
     _scheduleUpdateInDebugger: function()
@@ -799,7 +795,6 @@ WebInspector.BreakpointManager.TargetBreakpoint.prototype = {
             return false;
         var scriptFile = this._debuggerWorkspaceBinding.scriptFile(uiSourceCode, this.target());
         return !!scriptFile && scriptFile.hasDivergedFromVM();
-
     },
 
     /**
@@ -920,10 +915,13 @@ WebInspector.BreakpointManager.TargetBreakpoint.prototype = {
 
     /**
      * @param {!WebInspector.DebuggerModel.Location} location
-     * @param {!WebInspector.UILocation} uiLocation
+     * @param {!WebInspector.LiveLocation} liveLocation
      */
-    _locationUpdated: function(location, uiLocation)
+    _locationUpdated: function(location, liveLocation)
     {
+        var uiLocation = liveLocation.uiLocation();
+        if (!uiLocation)
+            return;
         var oldUILocation = this._uiLocations[location.id()] || null;
         this._uiLocations[location.id()] = uiLocation;
         this._breakpoint._replaceUILocation(oldUILocation, uiLocation);
@@ -942,7 +940,7 @@ WebInspector.BreakpointManager.TargetBreakpoint.prototype = {
             this._breakpoint.remove();
             return false;
         }
-        this._liveLocations.push(this._debuggerWorkspaceBinding.createLiveLocation(location, this._locationUpdated.bind(this, location)));
+        this._debuggerWorkspaceBinding.createLiveLocation(location, this._locationUpdated.bind(this, location), this._liveLocations);
         return true;
     },
 

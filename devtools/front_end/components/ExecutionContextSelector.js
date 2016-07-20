@@ -10,7 +10,7 @@
  */
 WebInspector.ExecutionContextSelector = function(targetManager, context)
 {
-    targetManager.observeTargets(this);
+    targetManager.observeTargets(this, WebInspector.Target.Capability.JS);
     context.addFlavorChangeListener(WebInspector.ExecutionContext, this._executionContextChanged, this);
     context.addFlavorChangeListener(WebInspector.Target, this._targetChanged, this);
 
@@ -28,8 +28,6 @@ WebInspector.ExecutionContextSelector.prototype = {
      */
     targetAdded: function(target)
     {
-        if (!target.hasJSContext())
-            return;
         // Defer selecting default target since we need all clients to get their
         // targetAdded notifications first.
         setImmediate(deferred.bind(this));
@@ -51,13 +49,11 @@ WebInspector.ExecutionContextSelector.prototype = {
      */
     targetRemoved: function(target)
     {
-        if (!target.hasJSContext())
-            return;
         var currentExecutionContext = this._context.flavor(WebInspector.ExecutionContext);
         if (currentExecutionContext && currentExecutionContext.target() === target)
             this._currentExecutionContextGone();
 
-        var targets = this._targetManager.targetsWithJSContext();
+        var targets = this._targetManager.targets(WebInspector.Target.Capability.JS);
         if (this._context.flavor(WebInspector.Target) === target && targets.length)
             this._context.setFlavor(WebInspector.Target, targets[0]);
     },
@@ -70,7 +66,7 @@ WebInspector.ExecutionContextSelector.prototype = {
         var newContext = /** @type {?WebInspector.ExecutionContext} */ (event.data);
         if (newContext) {
             this._context.setFlavor(WebInspector.Target, newContext.target());
-            if (!this._contextIsGoingAway)
+            if (!this._ignoreContextChanged)
                 this._lastSelectedContextId = this._contextPersistentId(newContext);
         }
     },
@@ -81,7 +77,7 @@ WebInspector.ExecutionContextSelector.prototype = {
      */
     _contextPersistentId: function(executionContext)
     {
-        return executionContext.isMainWorldContext ? executionContext.target().name() + ":" + executionContext.frameId : "";
+        return executionContext.isDefault ? executionContext.target().name() + ":" + executionContext.frameId : "";
     },
 
     /**
@@ -99,12 +95,45 @@ WebInspector.ExecutionContextSelector.prototype = {
         if (!executionContexts.length)
             return;
 
-        var newContext = executionContexts[0];
-        for (var i = 1; i < executionContexts.length; ++i) {
-            if (executionContexts[i].isMainWorldContext)
+        var newContext = null;
+        for (var i = 0; i < executionContexts.length && !newContext; ++i) {
+            if (this._shouldSwitchToContext(executionContexts[i]))
                 newContext = executionContexts[i];
         }
-        this._context.setFlavor(WebInspector.ExecutionContext, newContext);
+        for (var i = 0; i < executionContexts.length && !newContext; ++i) {
+            if (this._isMainFrameContext(executionContexts[i]))
+                newContext = executionContexts[i];
+        }
+        this._ignoreContextChanged = true;
+        this._context.setFlavor(WebInspector.ExecutionContext, newContext || executionContexts[0]);
+        this._ignoreContextChanged = false;
+    },
+
+    /**
+     * @param {!WebInspector.ExecutionContext} executionContext
+     * @return {boolean}
+     */
+    _shouldSwitchToContext: function(executionContext)
+    {
+        if (this._lastSelectedContextId && this._lastSelectedContextId === this._contextPersistentId(executionContext))
+            return true;
+        if (!this._lastSelectedContextId && this._isMainFrameContext(executionContext))
+            return true;
+        return false;
+    },
+
+    /**
+     * @param {!WebInspector.ExecutionContext} executionContext
+     * @return {boolean}
+     */
+    _isMainFrameContext: function(executionContext)
+    {
+        if (!executionContext.isDefault)
+            return false;
+        var frame = executionContext.target().resourceTreeModel.frameForId(executionContext.frameId);
+        if (frame && frame.isMainFrame())
+            return true;
+        return false;
     },
 
     /**
@@ -113,8 +142,11 @@ WebInspector.ExecutionContextSelector.prototype = {
     _onExecutionContextCreated: function(event)
     {
         var executionContext = /** @type {!WebInspector.ExecutionContext} */ (event.data);
-        if (!this._context.flavor(WebInspector.ExecutionContext) || (this._lastSelectedContextId && this._lastSelectedContextId === this._contextPersistentId(executionContext)))
+        if (!this._context.flavor(WebInspector.ExecutionContext) || this._shouldSwitchToContext(executionContext)) {
+            this._ignoreContextChanged = true;
             this._context.setFlavor(WebInspector.ExecutionContext, executionContext);
+            this._ignoreContextChanged = false;
+        }
     },
 
     /**
@@ -129,30 +161,41 @@ WebInspector.ExecutionContextSelector.prototype = {
 
     _currentExecutionContextGone: function()
     {
-        var targets = this._targetManager.targetsWithJSContext();
+        var targets = this._targetManager.targets(WebInspector.Target.Capability.JS);
         var newContext = null;
-        for (var i = 0; i < targets.length; ++i) {
-            if (targets[i].isServiceWorker())
-                continue;
+        for (var i = 0; i < targets.length && !newContext; ++i) {
             var executionContexts = targets[i].runtimeModel.executionContexts();
-            if (executionContexts.length) {
-                newContext = executionContexts[0];
-                break;
+            for (var executionContext of executionContexts) {
+                if (this._isMainFrameContext(executionContext)) {
+                    newContext = executionContext;
+                    break;
+                }
             }
         }
-        this._contextIsGoingAway = true;
+        if (!newContext) {
+            for (var i = 0; i < targets.length && !newContext; ++i) {
+                var executionContexts = targets[i].runtimeModel.executionContexts();
+                if (executionContexts.length) {
+                    newContext = executionContexts[0];
+                    break;
+                }
+            }
+        }
+        this._ignoreContextChanged = true;
         this._context.setFlavor(WebInspector.ExecutionContext, newContext);
-        this._contextIsGoingAway = false;
+        this._ignoreContextChanged = false;
     }
 }
 
 /**
  * @param {!Element} proxyElement
+ * @param {string} text
+ * @param {number} cursorOffset
  * @param {!Range} wordRange
  * @param {boolean} force
  * @param {function(!Array.<string>, number=)} completionsReadyCallback
  */
-WebInspector.ExecutionContextSelector.completionsForTextPromptInCurrentContext = function(proxyElement, wordRange, force, completionsReadyCallback)
+WebInspector.ExecutionContextSelector.completionsForTextPromptInCurrentContext = function(proxyElement, text, cursorOffset, wordRange, force, completionsReadyCallback)
 {
     var executionContext = WebInspector.context.flavor(WebInspector.ExecutionContext);
     if (!executionContext) {
@@ -170,5 +213,5 @@ WebInspector.ExecutionContextSelector.completionsForTextPromptInCurrentContext =
         expressionString = expressionString.substr(pos + 1);
 
     var prefix = wordRange.toString();
-    executionContext.completionsForExpression(expressionString, prefix, force, completionsReadyCallback);
+    executionContext.completionsForExpression(expressionString, text, cursorOffset, prefix, force, completionsReadyCallback);
 }

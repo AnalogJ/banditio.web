@@ -2,12 +2,6 @@
     "extensions": [
         {
             "type": "@WebInspector.AppProvider",
-            "condition": "can_dock",
-            "className": "WebInspector.AdvancedAppProvider",
-            "order": 0
-        },
-        {
-            "type": "@WebInspector.AppProvider",
             "className": "WebInspector.SimpleAppProvider",
             "order": 10
         },
@@ -18,8 +12,10 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
+            "category": "Navigation",
             "actionId": "main.reload",
             "className": "WebInspector.Main.ReloadActionDelegate",
+            "title": "Reload page",
             "bindings": [
                 {
                     "platform": "windows,linux",
@@ -33,8 +29,10 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
+            "category": "Navigation",
             "actionId": "main.hard-reload",
             "className": "WebInspector.Main.ReloadActionDelegate",
+            "title": "Hard reload page",
             "bindings": [
                 {
                     "platform": "windows,linux",
@@ -48,8 +46,11 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
+            "category": "Drawer",
             "actionId": "main.toggle-drawer",
             "className": "WebInspector.InspectorView.DrawerToggleActionDelegate",
+            "order": 100,
+            "title": "Toggle drawer",
             "bindings": [
                 {
                     "shortcut": "Esc"
@@ -68,21 +69,8 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
-            "actionId": "main.toggle-element-search",
-            "className": "WebInspector.InspectElementModeController.ToggleSearchActionDelegate",
-            "bindings": [
-                {
-                    "platform": "windows,linux",
-                    "shortcut": "Ctrl+Shift+C"
-                },
-                {
-                    "platform": "mac",
-                    "shortcut": "Meta+Shift+C"
-                }
-            ]
-        },
-        {
-            "type": "@WebInspector.ActionDelegate",
+            "category": "DevTools",
+            "title": "Restore last dock position",
             "actionId": "main.toggle-dock",
             "className": "WebInspector.DockController.ToggleDockActionDelegate",
             "bindings": [
@@ -142,19 +130,52 @@
             ]
         },
         {
-            "type": "drawer-view",
-            "name": "rendering",
-            "title": "Rendering",
-            "order": "11",
-            "className": "WebInspector.RenderingOptions.View",
-            "experiment": "!materialDesign"
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "main.search-in-panel.find",
+            "className": "WebInspector.Main.SearchActionDelegate",
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+F"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+F F3"
+                }
+            ]
         },
         {
-            "type": "@WebInspector.ToolbarItem.Provider",
-            "className": "WebInspector.InspectElementModeController.ToggleButtonProvider",
-            "location": "main-toolbar-left",
-            "order": 0,
-            "actionId": "main.toggle-element-search"
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "main.search-in-panel.cancel",
+            "className": "WebInspector.Main.SearchActionDelegate",
+            "order": 10,
+            "bindings": [
+                {
+                    "shortcut": "Esc"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "main.search-in-panel.find-next",
+            "className": "WebInspector.Main.SearchActionDelegate",
+            "bindings": [
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+G"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "main.search-in-panel.find-previous",
+            "className": "WebInspector.Main.SearchActionDelegate",
+            "bindings": [
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+Shift+G"
+                }
+            ]
         },
         {
             "type": "@WebInspector.ToolbarItem.Provider",
@@ -188,17 +209,16 @@
         },
         {
             "type": "setting",
-            "category": "",
+            "category": "Network",
             "title": "Disable cache (while DevTools is open)",
             "settingName": "cacheDisabled",
             "settingType": "boolean",
-            "defaultValue": false
-        },
-        {
-            "type": "setting",
-            "settingName": "networkConditions",
-            "settingType": "object",
-            "defaultValue": { "throughput": -1, "latency": 0 }
+            "order": 0,
+            "defaultValue": false,
+            "options": [
+                { "value": true, "title": "Disable cache (while DevTools is open)" },
+                { "value": false, "title": "Enable cache" }
+            ]
         },
         {
             "type": "setting",
@@ -206,7 +226,33 @@
             "title": "Disable JavaScript",
             "settingName": "javaScriptDisabled",
             "settingType": "boolean",
+            "order": 1,
             "defaultValue": false
+        },
+        {
+            "type": "setting",
+            "category": "DevTools",
+            "title": "Auto-open DevTools for popups",
+            "settingName": "autoAttachToCreatedPages",
+            "settingType": "boolean",
+            "order": 2,
+            "defaultValue": false,
+            "options": [
+                { "value": true, "title": "Auto-open DevTools for popups" },
+                { "value": false, "title": "Do not auto-open DevTools for popups" }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Appearance",
+            "title": "Theme:",
+            "settingName": "uiTheme",
+            "settingType": "enum",
+            "defaultValue": "default",
+            "options": [
+                { "title": "Switch to default theme", "text": "Default", "value": "default" },
+                { "title": "Switch to dark theme", "text": "Dark", "value": "dark" }
+            ]
         },
         {
             "type": "setting",
@@ -216,9 +262,9 @@
             "settingType": "enum",
             "defaultValue": "auto",
             "options": [
-                ["horizontal", "bottom"],
-                ["vertical", "right"],
-                ["auto", "auto"]
+                { "title": "Use horizontal panel layout", "text": "horizontal", "value": "bottom" },
+                { "title": "Use vertical panel layout", "text": "vertical", "value": "right" },
+                { "title": "Use automatic panel layout", "text": "auto", "value": "auto" }
             ]
         },
         {
@@ -227,14 +273,6 @@
             "title": "Enable Ctrl + 1-9 shortcut to switch panels",
             "title-mac": "Enable Cmd + 1-9 shortcut to switch panels",
             "settingName": "shortcutPanelSwitch",
-            "settingType": "boolean",
-            "defaultValue": false
-        },
-        {
-            "type": "setting",
-            "category": "Appearance",
-            "title": "Don't show emulation warnings",
-            "settingName": "disableOverridesWarning",
             "settingType": "boolean",
             "defaultValue": false
         },
@@ -255,69 +293,69 @@
             "defaultValue": false
         },
         {
+            "type": "setting",
+            "category": "Console",
+            "title": "Report input events blocked for too long",
+            "settingName": "blockedEventsWarningEnabled",
+            "settingType": "boolean",
+            "defaultValue": true
+        },
+        {
             "type": "@WebInspector.SettingUI",
             "category": "Extensions",
             "className": "WebInspector.HandlerRegistry.OpenAnchorLocationSettingUI"
         },
         {
-            "type": "@WebInspector.ToolbarItem.Provider",
-            "className": "WebInspector.RenderingOptions.ButtonProvider",
-            "order": 1,
-            "location": "elements-toolbar",
-            "experiment": "materialDesign"
+            "type": "@WebInspector.SettingUI",
+            "category": "Elements",
+            "order": 3,
+            "className": "WebInspector.ShowMetricsRulersSettingUI"
         },
         {
-            "type": "@WebInspector.ToolbarItem.Provider",
-            "separator": "true",
-            "order": 2,
-            "location": "elements-toolbar",
-            "experiment": "materialDesign"
+            "type": "context-menu-item",
+            "location": "mainMenu/navigate",
+            "title": "More tools",
+            "subMenuId": "mainMenuMoreTools",
+            "order": 80
         },
         {
-            "type": "setting",
-            "settingName": "showPaintRects",
-            "settingType": "boolean",
-            "defaultValue": false
-        },
-        {
-            "type": "setting",
-            "settingName": "showDebugBorders",
-            "settingType": "boolean",
-            "defaultValue": false
+            "type": "drawer-view",
+            "name": "rendering",
+            "title": "Rendering",
+            "persistence": "closeable",
+            "order": 50,
+            "className": "WebInspector.RenderingOptionsView"
         },
         {
             "type": "setting",
-            "settingName": "showFPSCounter",
-            "settingType": "boolean",
-            "defaultValue": false
-        },
-        {
-            "type": "setting",
-            "settingName": "showScrollBottleneckRects",
-            "settingType": "boolean",
-            "defaultValue": false
+            "category": "DevTools",
+            "settingName": "currentDockState",
+            "settingType": "enum",
+            "defaultValue": "right",
+            "options": [
+                { "value": "right", "title": "Dock to right" },
+                { "value": "bottom", "title": "Dock to bottom" },
+                { "value": "undocked", "title": "Undock into separate window" }
+            ]
         }
     ],
     "dependencies": [
         "extensions",
         "host",
         "platform",
-        "sdk",
-        "emulation"
+        "sdk"
     ],
     "scripts": [
-        "HelpScreenUntilReload.js",
-        "AdvancedApp.js",
         "RenderingOptions.js",
         "SimpleApp.js",
-        "TestController.js",
-        "Tests.js",
         "OverlayController.js",
+        "Connections.js",
         "Main.js"
     ],
-    "skip_compilation": [
-        "Tests.js"
-    ],
     "resources": [
+        "errorWarningCounter.css",
+        "remoteDebuggingTerminatedScreen.css",
+        "renderingOptions.css",
+        "targetCrashedScreen.css"
     ]
 }

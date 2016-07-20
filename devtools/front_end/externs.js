@@ -43,6 +43,17 @@ Event.prototype.isMetaOrCtrlForTest;
 Event.prototype.code;
 
 /**
+ * TODO(luoe): MouseEvent properties movementX and movementY from the
+ * PointerLock API are not yet standard. Once they are included in
+ * Closure Compiler, these custom externs can be removed.
+ */
+/** @type {number} */
+MouseEvent.prototype.movementX;
+
+/** @type {number} */
+MouseEvent.prototype.movementY;
+
+/**
  * @type {number}
  */
 KeyboardEvent.DOM_KEY_LOCATION_NUMPAD;
@@ -78,27 +89,27 @@ Array.prototype.rotate = function(index) {}
  */
 Array.prototype.sortNumbers = function() {}
 /**
- * @param {!T} object
- * @param {function(!T,!S):number=} comparator
+ * @param {!S} object
+ * @param {function(!S,!T):number=} comparator
  * @return {number}
- * @this {Array.<S>}
- * @template T,S
+ * @this {Array.<T>}
+ * @template S
  */
 Array.prototype.lowerBound = function(object, comparator) {}
 /**
- * @param {!T} object
- * @param {function(!T,!S):number=} comparator
+ * @param {!S} object
+ * @param {function(!S,!T):number=} comparator
  * @return {number}
- * @this {Array.<S>}
- * @template T,S
+ * @this {Array.<T>}
+ * @template S
  */
 Array.prototype.upperBound = function(object, comparator) {}
 /**
- * @param {!T} value
- * @param {function(!T,!S):number} comparator
+ * @param {!S} value
+ * @param {function(!S,!T):number} comparator
  * @return {number}
- * @this {Array.<S>}
- * @template T,S
+ * @this {Array.<T>}
+ * @template S
  */
 Array.prototype.binaryIndexOf = function(value, comparator) {}
 /**
@@ -187,7 +198,7 @@ DOMFileSystem.prototype.root = null;
  */
 window.domAutomationController;
 
-var DevToolsHost = {};
+var DevToolsHost = function() {};
 
 /** @typedef {{type:string, id:(number|undefined),
               label:(string|undefined), enabled:(boolean|undefined), checked:(boolean|undefined),
@@ -226,11 +237,6 @@ DevToolsHost.showContextMenuAtPoint = function(x, y, items, document) { }
 /**
  * @param {string} message
  */
-DevToolsHost.sendMessageToBackend = function(message) { }
-
-/**
- * @param {string} message
- */
 DevToolsHost.sendMessageToEmbedder = function(message) { }
 
 /**
@@ -253,13 +259,19 @@ DevToolsHost.isUnderTest = function() { }
  */
 DevToolsHost.isHostedMode = function() { }
 
-// FIXME: remove everything below.
-var FormatterWorker = {}
-var WebInspector = {}
+/**
+ * @param {string} fileSystemId
+ * @param {string} registeredName
+ * @return {?DOMFileSystem}
+ */
+DevToolsHost.isolatedFileSystem = function(fileSystemId, registeredName) { }
 
-WebInspector.panels = {};
+/**
+ * @param {!FileSystem} fileSystem
+ */
+DevToolsHost.upgradeDraggedFileSystemPermissions = function(fileSystem) { }
 
-WebInspector.reload = function() { }
+var WebInspector = function() {}
 
 /** Extensions API */
 
@@ -300,17 +312,36 @@ function ExtensionReloadOptions() {
 }
 
 var Adb = {};
-/** @typedef {{id: string, adbBrowserChromeVersion: string, compatibleVersion: boolean, adbBrowserName: string, source: string, adbBrowserVersion: string}} */
+/** @typedef {{id: string, name: string, url: string, adbAttachedForeign: boolean}} */
+Adb.Page;
+/** @typedef {{id: string, adbBrowserChromeVersion: string, compatibleVersion: boolean, adbBrowserName: string, source: string, adbBrowserVersion: string, pages: !Array<!Adb.Page>}} */
 Adb.Browser;
 /** @typedef {{id: string, adbModel: string, adbSerial: string, browsers: !Array.<!Adb.Browser>, adbPortStatus: !Array.<number>, adbConnected: boolean}} */
 Adb.Device;
+/** @typedef {!Object.<string, string>} */
+Adb.PortForwardingConfig;
+/** @typedef {!{port: string, address: string}} */
+Adb.PortForwardingRule;
+/** @typedef {{ports: !Object<string, number>, browserId: string}} */
+Adb.DevicePortForwardingStatus;
+/** @typedef {!Object<string, !Adb.DevicePortForwardingStatus>} */
+Adb.PortForwardingStatus;
 
-/* jsdifflib API */
-var difflib = {};
-difflib.stringAsLines = function(text) { return []; }
-/** @constructor */
-difflib.SequenceMatcher = function(baseText, newText) { }
-difflib.SequenceMatcher.prototype.get_opcodes = function() { return []; }
+/**
+ * @constructor
+ */
+function diff_match_patch()
+{
+}
+
+diff_match_patch.prototype = {
+    /**
+     * @param {string} text1
+     * @param {string} text2
+     * @return {!Array.<!{0: number, 1: string}>}
+     */
+    diff_main: function(text1, text2) { }
+}
 
 /** @constructor */
 function Path2D() {}
@@ -520,6 +551,12 @@ CodeMirror.Pos.prototype.ch;
  */
 CodeMirror.cmpPos = function(pos1, pos2) { };
 
+/**
+ * @param {string} mode
+ * @param {?} definition
+ */
+CodeMirror.defineSimpleMode = function(mode, definition) {};
+
 /** @constructor */
 CodeMirror.StringStream = function(line)
 {
@@ -546,6 +583,12 @@ CodeMirror.StringStream.prototype = {
     skipTo: function(ch) { },
     skipToEnd: function() { },
     sol: function() { }
+}
+
+/** @constructor */
+CodeMirror.TextMarker = function(doc, type) { }
+CodeMirror.TextMarker.prototype = {
+    clear: function() { }
 }
 
 /** @type {Object.<string, !Object.<string, string>>} */
@@ -651,6 +694,18 @@ ESTree.Node = function()
     this.properties;
     /** @type {(!ESTree.Node|undefined)} */
     this.init;
+    /** @type {(!Array.<!ESTree.Node>|undefined)} */
+    this.params;
+    /** @type {(string|undefined)} */
+    this.name;
+    /** @type {(?ESTree.Node|undefined)} */
+    this.id;
+    /** @type {(number|undefined)} */
+    this.length;
+    /** @type {(?ESTree.Node|undefined)} */
+    this.argument;
+    /** @type {(string|undefined)} */
+    this.operator;
 }
 
 /**
@@ -664,3 +719,48 @@ ESTree.TemplateLiteralNode = function()
     /** @type {!Array.<!ESTree.Node>} */
     this.expressions;
 }
+
+var Gonzales = {}
+var gonzales = {
+    /**
+     * @param {string} text
+     * @param {!Object=} options
+     * @return {!Gonzales.Node}
+     */
+    parse: function(text, options) { },
+}
+
+/**
+ * @constructor
+ */
+Gonzales.Location = function()
+{
+    /** @type {number} */
+    this.line;
+    /** @type {number} */
+    this.column;
+}
+
+/**
+ * @constructor
+ */
+Gonzales.Node = function()
+{
+    /** @type {string} */
+    this.type;
+    /** @type {string} */
+    this.syntax;
+    /** @type {!Gonzales.Location} */
+    this.start;
+    /** @type {!Gonzales.Location} */
+    this.end;
+    /** @type {(string|!Array<!Gonzales.Node>)} */
+    this.content;
+}
+
+/**
+ * @type {string}
+ * @see http://heycam.github.io/webidl/#es-DOMException-prototype-object
+ * TODO(jsbell): DOMException should be a subclass of Error.
+ */
+DOMException.prototype.message;

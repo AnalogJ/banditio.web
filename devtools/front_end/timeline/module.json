@@ -4,7 +4,7 @@
             "type": "@WebInspector.PanelFactory",
             "name": "timeline",
             "title": "Timeline",
-            "order": 3,
+            "order": 50,
             "className": "WebInspector.TimelinePanelFactory"
         },
         {
@@ -19,11 +19,88 @@
             "type": "@WebInspector.QueryParamHandler",
             "name": "loadTimelineFromURL",
             "className": "WebInspector.LoadTimelineHandler"
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "timeline.toggle-recording",
+            "iconClass": "record-toolbar-item",
+            "contextTypes": ["WebInspector.TimelinePanel"],
+            "className": "WebInspector.TimelinePanel.ActionDelegate",
+            "options": [
+                { "value": true, "title": "Record" },
+                { "value": false, "title": "Stop" }
+            ],
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+E"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+E"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "timeline.save-to-file",
+            "contextTypes": ["WebInspector.TimelinePanel"],
+            "className": "WebInspector.TimelinePanel.ActionDelegate",
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+S"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+S"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "timeline.load-from-file",
+            "contextTypes": ["WebInspector.TimelinePanel"],
+            "order": "10",
+            "className": "WebInspector.TimelinePanel.ActionDelegate",
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+O"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+O"
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "timeline.jump-to-previous-frame",
+            "contextTypes": ["WebInspector.TimelinePanel"],
+            "className": "WebInspector.TimelinePanel.ActionDelegate",
+            "bindings": [
+                {
+                    "shortcut": "["
+                }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "timeline.jump-to-next-frame",
+            "contextTypes": ["WebInspector.TimelinePanel"],
+            "className": "WebInspector.TimelinePanel.ActionDelegate",
+            "bindings": [
+                {
+                    "shortcut": "]"
+                }
+            ]
         }
     ],
     "dependencies": [
         "components",
         "components_lazy",
+        "timeline_model",
         "ui_lazy"
     ],
     "scripts": [
@@ -33,16 +110,12 @@
         "LayerViewHost.js",
         "Layers3DView.js",
         "MemoryCountersGraph.js",
-        "TimelineModel.js",
-        "TimelineJSProfile.js",
-        "TimelinePresentationModel.js",
-        "TimelineFrameModel.js",
+        "TimelineController.js",
+        "TimelineLoader.js",
         "TimelineEventOverview.js",
-        "TimelineFrameOverview.js",
         "TimelineFlameChart.js",
         "TimelineTreeView.js",
         "TimelineUIUtils.js",
-        "TimelineView.js",
         "TimelineLayersView.js",
         "TimelinePaintProfilerView.js",
         "TransformController.js",
@@ -51,6 +124,8 @@
     ],
     "resources": [
         "invalidationsTree.css",
-        "timelinePanel.css"
+        "timelineFlamechartPopover.css",
+        "timelinePanel.css",
+        "timelineStatusDialog.css"
     ]
 }

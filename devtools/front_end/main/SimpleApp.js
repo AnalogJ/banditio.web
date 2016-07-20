@@ -12,8 +12,8 @@ WebInspector.SimpleApp = function()
 
 WebInspector.SimpleApp.prototype = {
     /**
-     * @param {!Document} document
      * @override
+     * @param {!Document} document
      */
     presentUI: function(document)
     {

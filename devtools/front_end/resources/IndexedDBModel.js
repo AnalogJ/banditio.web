@@ -167,6 +167,18 @@ WebInspector.IndexedDBModel.prototype = {
         this._enabled = true;
     },
 
+    /**
+     * @param {string} origin
+     */
+    clearForOrigin: function(origin)
+    {
+        if (!this._enabled)
+            return;
+
+        this._removeOrigin(origin);
+        this._addOrigin(origin);
+    },
+
     refreshDatabaseNames: function()
     {
         for (var securityOrigin in this._databaseNamesBySecurityOrigin)
@@ -330,17 +342,17 @@ WebInspector.IndexedDBModel.prototype = {
 
             if (!this._databaseNamesBySecurityOrigin[databaseId.securityOrigin])
                 return;
-            var databaseModel = new WebInspector.IndexedDBModel.Database(databaseId, databaseWithObjectStores.version, databaseWithObjectStores.intVersion);
+            var databaseModel = new WebInspector.IndexedDBModel.Database(databaseId, databaseWithObjectStores.version);
             this._databases.set(databaseId, databaseModel);
             for (var i = 0; i < databaseWithObjectStores.objectStores.length; ++i) {
                 var objectStore = databaseWithObjectStores.objectStores[i];
                 var objectStoreIDBKeyPath = WebInspector.IndexedDBModel.idbKeyPathFromKeyPath(objectStore.keyPath);
                 var objectStoreModel = new WebInspector.IndexedDBModel.ObjectStore(objectStore.name, objectStoreIDBKeyPath, objectStore.autoIncrement);
                 for (var j = 0; j < objectStore.indexes.length; ++j) {
-                     var index = objectStore.indexes[j];
-                     var indexIDBKeyPath = WebInspector.IndexedDBModel.idbKeyPathFromKeyPath(index.keyPath);
-                     var indexModel = new WebInspector.IndexedDBModel.Index(index.name, indexIDBKeyPath, index.unique, index.multiEntry);
-                     objectStoreModel.indexes[indexModel.name] = indexModel;
+                    var index = objectStore.indexes[j];
+                    var indexIDBKeyPath = WebInspector.IndexedDBModel.idbKeyPathFromKeyPath(index.keyPath);
+                    var indexModel = new WebInspector.IndexedDBModel.Index(index.name, indexIDBKeyPath, index.unique, index.multiEntry);
+                    objectStoreModel.indexes[indexModel.name] = indexModel;
                 }
                 databaseModel.objectStores[objectStoreModel.name] = objectStoreModel;
             }
@@ -407,9 +419,9 @@ WebInspector.IndexedDBModel.prototype = {
                 return;
             var entries = [];
             for (var i = 0; i < dataEntries.length; ++i) {
-                var key = WebInspector.RemoteObject.fromLocalObject(JSON.parse(dataEntries[i].key));
-                var primaryKey = WebInspector.RemoteObject.fromLocalObject(JSON.parse(dataEntries[i].primaryKey));
-                var value = WebInspector.RemoteObject.fromLocalObject(JSON.parse(dataEntries[i].value));
+                var key = this.target().runtimeModel.createRemoteObject(dataEntries[i].key);
+                var primaryKey = this.target().runtimeModel.createRemoteObject(dataEntries[i].primaryKey);
+                var value = this.target().runtimeModel.createRemoteObject(dataEntries[i].value);
                 entries.push(new WebInspector.IndexedDBModel.Entry(key, primaryKey, value));
             }
             callback(entries, hasMore);
@@ -459,14 +471,12 @@ WebInspector.IndexedDBModel.DatabaseId.prototype = {
 /**
  * @constructor
  * @param {!WebInspector.IndexedDBModel.DatabaseId} databaseId
- * @param {string} version
- * @param {number} intVersion
+ * @param {number} version
  */
-WebInspector.IndexedDBModel.Database = function(databaseId, version, intVersion)
+WebInspector.IndexedDBModel.Database = function(databaseId, version)
 {
     this.databaseId = databaseId;
     this.version = version;
-    this.intVersion = intVersion;
     this.objectStores = {};
 }
 

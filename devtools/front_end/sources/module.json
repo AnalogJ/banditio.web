@@ -4,7 +4,7 @@
             "type": "@WebInspector.PanelFactory",
             "name": "sources",
             "title": "Sources",
-            "order": 2,
+            "order": 30,
             "className": "WebInspector.SourcesPanelFactory"
         },
         {
@@ -14,9 +14,15 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
+            "category": "Debugger",
             "actionId": "debugger.toggle-pause",
+            "iconClass": "pause-toolbar-item",
             "className": "WebInspector.SourcesPanel.RevealingActionDelegate",
             "contextTypes": ["WebInspector.SourcesPanel", "WebInspector.ShortcutRegistry.ForwardedShortcut"],
+            "options": [
+                { "value": true, "title": "Pause script execution" },
+                { "value": false, "title": "Resume script execution" }
+            ],
             "bindings": [
                 {
                     "platform": "windows,linux",
@@ -32,6 +38,8 @@
             "type": "@WebInspector.ActionDelegate",
             "actionId": "debugger.step-over",
             "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
+            "title": "Step over next function call",
+            "iconClass": "step-over-toolbar-item",
             "contextTypes": ["WebInspector.SourcesPanel"],
             "bindings": [
                 {
@@ -48,6 +56,8 @@
             "type": "@WebInspector.ActionDelegate",
             "actionId": "debugger.step-into",
             "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
+            "title": "Step into next function call",
+            "iconClass": "step-in-toolbar-item",
             "contextTypes": ["WebInspector.SourcesPanel"],
             "bindings": [
                 {
@@ -62,25 +72,10 @@
         },
         {
             "type": "@WebInspector.ActionDelegate",
-            "actionId": "debugger.step-into-async",
-            "experiment": "stepIntoAsync",
-            "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
-            "contextTypes": ["WebInspector.SourcesPanel"],
-            "bindings": [
-                {
-                    "platform": "windows,linux",
-                    "shortcut": "Alt+F11 Alt+Ctrl+;"
-                },
-                {
-                    "platform": "mac",
-                    "shortcut": "Alt+F11 Alt+Meta+;"
-                }
-            ]
-        },
-        {
-            "type": "@WebInspector.ActionDelegate",
             "actionId": "debugger.step-out",
             "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
+            "title": "Step out of current function",
+            "iconClass": "step-out-toolbar-item",
             "contextTypes": ["WebInspector.SourcesPanel"],
             "bindings": [
                 {
@@ -97,6 +92,8 @@
             "type": "@WebInspector.ActionDelegate",
             "actionId": "debugger.run-snippet",
             "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
+            "title": "Run snippet",
+            "iconClass": "play-toolbar-item",
             "contextTypes": ["WebInspector.SourcesPanel"],
             "bindings": [
                 {
@@ -112,7 +109,9 @@
         {
             "type": "@WebInspector.ActionDelegate",
             "actionId": "sources.search.toggle",
+            "title": "Search all files",
             "className": "WebInspector.AdvancedSearchView.ActionDelegate",
+            "category": "DevTools",
             "bindings": [
                 {
                     "platform": "mac",
@@ -125,10 +124,36 @@
             ]
         },
         {
+            "type": "@WebInspector.ActionDelegate",
+            "category": "Debugger",
+            "actionId": "debugger.toggle-breakpoints-active",
+            "iconClass": "breakpoint-toolbar-item",
+            "className": "WebInspector.SourcesPanel.DebuggingActionDelegate",
+            "contextTypes": ["WebInspector.SourcesPanel"],
+            "options": [
+                { "value": true, "title": "Deactivate breakpoints" },
+                { "value": false, "title": "Activate breakpoints" }
+            ],
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+F8"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+F8"
+                }
+            ]
+        },
+        {
             "type": "context-menu-item",
             "location": "mainMenu/navigate",
-            "title": "Search all files",
             "actionId": "sources.search.toggle"
+        },
+        {
+            "type": "context-menu-item",
+            "location": "navigatorMenu/navigate",
+            "actionId": "sources.go-to-source"
         },
         {
             "type": "@WebInspector.Revealer",
@@ -163,6 +188,7 @@
             "name": "sources",
             "title": "Sources",
             "order": 1,
+            "persistence": "permanent",
             "className": "WebInspector.SourcesNavigatorView"
         },
         {
@@ -170,6 +196,7 @@
             "name": "contentScripts",
             "title": "Content scripts",
             "order": 2,
+            "persistence": "permanent",
             "className": "WebInspector.ContentScriptsNavigatorView"
         },
         {
@@ -177,20 +204,23 @@
             "name": "snippets",
             "title": "Snippets",
             "order": 3,
+            "persistence": "permanent",
             "className": "WebInspector.SnippetsNavigatorView"
         },
         {
             "type": "@WebInspector.ActionDelegate",
             "actionId": "sources.go-to-source",
+            "title": "Go to file...",
             "className": "WebInspector.SourcesPanel.RevealingActionDelegate",
+            "order": 100,
             "bindings": [
                 {
                     "platform": "mac",
-                    "shortcut": "Meta+O Meta+P"
+                    "shortcut": "Meta+P Meta+O"
                 },
                 {
                     "platform": "windows,linux",
-                    "shortcut": "Ctrl+O Ctrl+P"
+                    "shortcut": "Ctrl+P Ctrl+O"
                 }
             ]
         },
@@ -204,6 +234,12 @@
                     "shortcut": "Alt+O"
                 }
             ]
+        },
+        {
+            "type": "setting",
+            "settingName": "navigatorGroupByFolder",
+            "settingType": "boolean",
+            "defaultValue": "true"
         },
         {
             "type": "setting",
@@ -253,9 +289,9 @@
             "settingType": "enum",
             "defaultValue": "original",
             "options": [
-                ["None", "none"],
-                ["All", "all"],
-                ["Trailing", "trailing"]
+                { "title": "Do not show whitespace characters", "text": "None", "value": "none" },
+                { "title": "Show all whitespace characters", "text": "All", "value": "all" },
+                { "title": "Show trailing whitespace characters", "text": "Trailing", "value": "trailing" }
             ]
         },
         {
@@ -275,39 +311,62 @@
             "defaultValue": true
         },
         {
-            "type": "setting",
-            "title": "Auto-reload generated CSS",
-            "parentSettingName": "cssSourceMapsEnabled",
-            "settingName": "cssReloadEnabled",
-            "settingType": "boolean",
-            "defaultValue": false
+            "type": "drawer-view",
+            "name": "sources.search",
+            "title": "Search",
+            "persistence": "closeable",
+            "order": 100,
+            "className": "WebInspector.AdvancedSearchView"
+        },
+        {
+            "type": "drawer-view",
+            "name": "sources.history",
+            "title": "History",
+            "persistence": "temporary",
+            "className": "WebInspector.RevisionHistoryView"
+        },
+        {
+            "type": "drawer-view",
+            "name": "sources.quick",
+            "title": "Quick source",
+            "persistence": "closeable",
+            "order": 1000,
+            "className": "WebInspector.SourcesPanel.WrapperView"
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "category": "Sources",
+            "actionId": "sources.close-all",
+            "className": "WebInspector.SourcesView.CloseAllActionDelegate",
+            "title": "Close All"
         }
     ],
     "dependencies": [
         "components",
         "source_frame",
         "snippets",
+        "ui_lazy",
         "extensions"
     ],
     "scripts": [
-        "jsdifflib.js",
         "UIList.js",
         "AddSourceMapURLDialog.js",
-        "AsyncOperationsSidebarPane.js",
         "CallStackSidebarPane.js",
         "SimpleHistoryManager.js",
         "EditingLocationHistoryManager.js",
         "EventListenerBreakpointsSidebarPane.js",
         "FilePathScoreFunction.js",
-        "FilteredItemSelectionDialog.js",
+        "FilteredUISourceCodeListDelegate.js",
         "UISourceCodeFrame.js",
+        "SourceMapNamesResolver.js",
         "JavaScriptBreakpointsSidebarPane.js",
+        "JavaScriptOutlineDialog.js",
+        "SourceCodeDiff.js",
         "JavaScriptSourceFrame.js",
         "CSSSourceFrame.js",
         "NavigatorView.js",
         "RevisionHistoryView.js",
         "ScopeChainSidebarPane.js",
-        "ServiceWorkersSidebarPane.js",
         "SourcesNavigator.js",
         "StyleSheetOutlineDialog.js",
         "TabbedEditorContainer.js",
@@ -316,6 +375,7 @@
         "ScriptFormatterEditorAction.js",
         "InplaceFormatterEditorAction.js",
         "ScriptFormatter.js",
+        "OpenResourceDialog.js",
         "SourcesView.js",
         "AdvancedSearchView.js",
         "FileBasedSearchResultsPane.js",
@@ -326,11 +386,8 @@
         "JavaScriptCompiler.js",
         "ObjectEventListenersSidebarPane.js"
     ],
-    "skip_compilation": [
-        "jsdifflib.js"
-    ],
     "resources": [
-        "filteredItemSelectionDialog.css",
+        "addSourceMapURLDialog.css",
         "uiList.css",
         "navigatorView.css",
         "revisionHistory.css",

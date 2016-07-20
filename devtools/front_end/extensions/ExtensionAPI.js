@@ -28,6 +28,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/* eslint-disable indent */
+
 function defineCommonExtensionSymbols(apiPrivate)
 {
     if (!apiPrivate.audits)
@@ -802,9 +804,8 @@ var forwardTimer = null;
 
 function forwardKeyboardEvent(event)
 {
-    const Esc = "U+001B";
     // We only care about global hotkeys, not about random text
-    if (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F\d+$/.test(event.keyIdentifier) && event.keyIdentifier !== Esc)
+    if (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F\d+$/.test(event.key) && event.key !== "Escape")
         return;
     var requestPayload = {
         eventType: event.type,
@@ -812,6 +813,8 @@ function forwardKeyboardEvent(event)
         altKey: event.altKey,
         metaKey: event.metaKey,
         keyIdentifier: event.keyIdentifier,
+        key: event.key,
+        code: event.code,
         location: event.location,
         keyCode: event.keyCode
     };
@@ -953,7 +956,7 @@ function platformExtensionAPI(coreAPI)
     {
         return tabId;
     }
-    chrome = window.chrome || {};
+    var chrome = window.chrome || {};
     // Override chrome.devtools as a workaround for a error-throwing getter being exposed
     // in extension pages loaded into a non-extension process (only happens for remote client
     // extensions)
@@ -966,6 +969,7 @@ function platformExtensionAPI(coreAPI)
     chrome.devtools.inspectedWindow.__proto__ = coreAPI.inspectedWindow;
     chrome.devtools.network = coreAPI.network;
     chrome.devtools.panels = coreAPI.panels;
+    chrome.devtools.panels.themeName = themeName;
 
     // default to expose experimental APIs for now.
     if (extensionInfo.exposeExperimentalAPIs !== false) {
@@ -986,27 +990,30 @@ function platformExtensionAPI(coreAPI)
 /**
  * @param {!ExtensionDescriptor} extensionInfo
  * @param {string} inspectedTabId
+ * @param {string} themeName
  * @return {string}
  */
-function buildPlatformExtensionAPI(extensionInfo, inspectedTabId)
+function buildPlatformExtensionAPI(extensionInfo, inspectedTabId, themeName)
 {
     return "var extensionInfo = " + JSON.stringify(extensionInfo) + ";" +
        "var tabId = " + inspectedTabId + ";" +
+       "var themeName = '" + themeName + "';" +
        platformExtensionAPI.toString();
 }
 
 /**
  * @param {!ExtensionDescriptor} extensionInfo
  * @param {string} inspectedTabId
+ * @param {string} themeName
  * @return {string}
  */
-function buildExtensionAPIInjectedScript(extensionInfo, inspectedTabId)
+function buildExtensionAPIInjectedScript(extensionInfo, inspectedTabId, themeName)
 {
     return "(function(injectedScriptId){ " +
         "var extensionServer;" +
         defineCommonExtensionSymbols.toString() + ";" +
         injectedExtensionAPI.toString() + ";" +
-        buildPlatformExtensionAPI(extensionInfo, inspectedTabId) + ";" +
+        buildPlatformExtensionAPI(extensionInfo, inspectedTabId, themeName) + ";" +
         "platformExtensionAPI(injectedExtensionAPI(injectedScriptId));" +
         "return {};" +
         "})";

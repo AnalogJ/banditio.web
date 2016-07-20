@@ -5,13 +5,11 @@
  */
 
 .ax-computed-text {
-    padding: 3px 5px 0;
     background-image: url(Images/speech.png);
     background-repeat: no-repeat;
-    background-position: 16px center;
-    padding: 4px 4px 0 4px;
-    padding-left: 36px;
-    min-height: 18px;
+    background-position: 0px center;
+    background-size: 12px;
+    padding-left: 17px;
 }
 
 .ax-computed-text div {
@@ -30,12 +28,17 @@ div.ax-text-alternatives {
 }
 
 .ax-name {
-    color: rgb(136, 19, 145);
+    color: rgb(153, 69, 0);
     flex-shrink: 0;
 }
 
 .ax-readable-name {
     flex-shrink: 0;
+    padding-left: 2px;
+}
+
+.ax-readable-string {
+    font-style: italic;
 }
 
 span.ax-role {
@@ -55,5 +58,49 @@ span.ax-internal-role {
 }
 
 .tree-outline li {
-    padding-top: 5px;
+    padding-left: 1px;
+    align-items: baseline;
+}
+
+.tree-outline li.property {
+    color: rgb(33, 33, 33);
+}
+
+.tree-outline li.invalid {
+    position: relative;
+    left: -2px;
+}
+
+.invalid {
+    text-decoration: line-through;
+}
+
+.tree-outline label[is=dt-icon-label] {
+    position: relative;
+    left: -11px;
+}
+
+span.ax-value-undefined {
+    font-style: italic;
+}
+
+.ax-value-source-unused {
+    opacity: 0.5;
+}
+
+.ax-value-source-superseded,
+.ax-value-source-invalid {
+    text-decoration: line-through;
+}
+
+.tree-outline label[is=dt-icon-label] + .ax-name {
+    margin-left: -11px;
+}
+
+.ax-value-string {
+    color: rgb(200, 0, 0);
+}
+
+.sidebar-pane-stack .sidebar-pane {
+    padding-left: 4px;
 }

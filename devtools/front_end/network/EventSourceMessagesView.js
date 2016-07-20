@@ -28,7 +28,7 @@ WebInspector.EventSourceMessagesView = function(request)
     this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SortingChanged, this._sortItems, this);
 
     this._dataGrid.setName("EventSourceMessagesView");
-    this._dataGrid.show(this.element);
+    this._dataGrid.asWidget().show(this.element);
 }
 
 WebInspector.EventSourceMessagesView.prototype = {
@@ -79,7 +79,7 @@ WebInspector.EventSourceMessageNode = function(message)
 {
     this._message = message;
     var time = new Date(message.time * 1000);
-    var timeText = ("0" + time.getHours()).substr(-2) + ":" + ("0" + time.getMinutes()).substr(-2)+ ":" + ("0" + time.getSeconds()).substr(-2) + "." + ("00" + time.getMilliseconds()).substr(-3);
+    var timeText = ("0" + time.getHours()).substr(-2) + ":" + ("0" + time.getMinutes()).substr(-2) + ":" + ("0" + time.getSeconds()).substr(-2) + "." + ("00" + time.getMilliseconds()).substr(-3);
     var timeNode = createElement("div");
     timeNode.createTextChild(timeText);
     timeNode.title = time.toLocaleString();

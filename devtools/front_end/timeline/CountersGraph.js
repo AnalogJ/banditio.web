@@ -30,27 +30,33 @@
 
 /**
  * @constructor
- * @extends {WebInspector.SplitWidget}
+ * @extends {WebInspector.VBox}
  * @implements {WebInspector.TimelineModeView}
- * @param {string} title
  * @param {!WebInspector.TimelineModeViewDelegate} delegate
  * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
  */
-WebInspector.CountersGraph = function(title, delegate, model)
+WebInspector.CountersGraph = function(delegate, model, filters)
 {
-    WebInspector.SplitWidget.call(this, true, false);
+    WebInspector.VBox.call(this);
 
     this.element.id = "memory-graphs-container";
 
     this._delegate = delegate;
     this._model = model;
-    this._calculator = new WebInspector.TimelineCalculator(this._model);
+    this._filters = filters;
+    this._calculator = new WebInspector.CounterGraphCalculator(this._model);
+
+    // Create selectors
+    this._infoWidget = new WebInspector.HBox();
+    this._infoWidget.element.classList.add("memory-counter-selector-swatches", "timeline-toolbar-resizer");
+    this._infoWidget.show(this.element);
 
     this._graphsContainer = new WebInspector.VBox();
-    this.setMainWidget(this._graphsContainer);
-    this._createCurrentValuesBar();
+    this._graphsContainer.show(this.element);
     var canvasWidget = new WebInspector.VBoxWithResizeCallback(this._resize.bind(this));
     canvasWidget.show(this._graphsContainer.element);
+    this._createCurrentValuesBar();
     this._canvasContainer = canvasWidget.element;
     this._canvasContainer.id = "memory-graphs-canvas-container";
     this._canvas = this._canvasContainer.createChild("canvas");
@@ -64,24 +70,11 @@ WebInspector.CountersGraph = function(title, delegate, model)
     this._timelineGrid = new WebInspector.TimelineGrid();
     this._canvasContainer.appendChild(this._timelineGrid.dividersElement);
 
-    // Populate sidebar
-    this._infoWidget = new WebInspector.VBox();
-    this._infoWidget.element.classList.add("sidebar-tree");
-    this._infoWidget.element.createChild("div", "sidebar-tree-section").textContent = title;
-    this.setSidebarWidget(this._infoWidget);
     this._counters = [];
     this._counterUI = [];
 }
 
 WebInspector.CountersGraph.prototype = {
-    /**
-     * @return {?WebInspector.Target}
-     */
-    target: function()
-    {
-        return this._model.target();
-    },
-
     _createCurrentValuesBar: function()
     {
         this._currentValuesBar = this._graphsContainer.element.createChild("div");
@@ -92,13 +85,14 @@ WebInspector.CountersGraph.prototype = {
      * @param {string} uiName
      * @param {string} uiValueTemplate
      * @param {string} color
+     * @param {function(number):string=} formatter
      * @return {!WebInspector.CountersGraph.Counter}
      */
-    createCounter: function(uiName, uiValueTemplate, color)
+    createCounter: function(uiName, uiValueTemplate, color, formatter)
     {
         var counter = new WebInspector.CountersGraph.Counter();
         this._counters.push(counter);
-        this._counterUI.push(new WebInspector.CountersGraph.CounterUI(this, uiName, uiValueTemplate, color, counter));
+        this._counterUI.push(new WebInspector.CountersGraph.CounterUI(this, uiName, uiValueTemplate, color, counter, formatter));
         return counter;
     },
 
@@ -128,6 +122,15 @@ WebInspector.CountersGraph.prototype = {
             this._counterUI[i].reset();
         }
         this.refresh();
+    },
+
+    /**
+     * @override
+     * @return {?Element}
+     */
+    resizerElement: function()
+    {
+        return this._infoWidget.element;
     },
 
     _resize: function()
@@ -188,35 +191,7 @@ WebInspector.CountersGraph.prototype = {
             }
         }
         if (bestTime !== undefined)
-            this._revealRecordAt(bestTime);
-    },
-
-    /**
-     * @param {number} time
-     */
-    _revealRecordAt: function(time)
-    {
-        var recordToReveal;
-        /**
-         * @param {!WebInspector.TimelineModel.Record} record
-         * @return {boolean}
-         * @this {WebInspector.CountersGraph}
-         */
-        function findRecordToReveal(record)
-        {
-            if (!this._model.isVisible(record))
-                return false;
-            if (record.startTime() <= time && time <= record.endTime()) {
-                recordToReveal = record;
-                return true;
-            }
-            // If there is no record containing the time than use the latest one before that time.
-            if (!recordToReveal || record.endTime() < time && recordToReveal.endTime() < record.endTime())
-                recordToReveal = record;
-            return false;
-        }
-        this._model.forAllRecords(null, findRecordToReveal.bind(this));
-        this._delegate.select(recordToReveal ? WebInspector.TimelineSelection.fromRecord(recordToReveal) : null);
+            this._delegate.selectEntryAtTime(bestTime);
     },
 
     /**
@@ -261,11 +236,8 @@ WebInspector.CountersGraph.prototype = {
 
     /**
      * @override
-     * @param {?RegExp} textFilter
      */
-    refreshRecords: function(textFilter)
-    {
-    },
+    refreshRecords: function() { },
 
     _clear: function()
     {
@@ -275,11 +247,19 @@ WebInspector.CountersGraph.prototype = {
 
     /**
      * @override
-     * @param {?WebInspector.TimelineModel.Record} record
+     * @param {?WebInspector.TracingModel.Event} event
      * @param {string=} regex
-     * @param {boolean=} selectRecord
+     * @param {boolean=} select
      */
-    highlightSearchResult: function(record, regex, selectRecord)
+    highlightSearchResult: function(event, regex, select)
+    {
+    },
+
+    /**
+     * @override
+     * @param {?WebInspector.TracingModel.Event} event
+     */
+    highlightEvent: function(event)
     {
     },
 
@@ -291,7 +271,7 @@ WebInspector.CountersGraph.prototype = {
     {
     },
 
-    __proto__: WebInspector.SplitWidget.prototype
+    __proto__: WebInspector.VBox.prototype
 }
 
 /**
@@ -355,7 +335,7 @@ WebInspector.CountersGraph.Counter.prototype = {
     },
 
     /**
-     * @param {!WebInspector.TimelineCalculator} calculator
+     * @param {!WebInspector.CounterGraphCalculator} calculator
      */
     _calculateVisibleIndexes: function(calculator)
     {
@@ -385,7 +365,7 @@ WebInspector.CountersGraph.Counter.prototype = {
 
         this.x = new Array(this.values.length);
         for (var i = this._minimumIndex + 1; i <= this._maximumIndex; i++)
-             this.x[i] = xFactor * (this.times[i] - this._minTime);
+            this.x[i] = xFactor * (this.times[i] - this._minTime);
     }
 }
 
@@ -396,17 +376,25 @@ WebInspector.CountersGraph.Counter.prototype = {
  * @param {string} currentValueLabel
  * @param {string} graphColor
  * @param {!WebInspector.CountersGraph.Counter} counter
+ * @param {(function(number): string)|undefined} formatter
  */
-WebInspector.CountersGraph.CounterUI = function(memoryCountersPane, title, currentValueLabel, graphColor, counter)
+WebInspector.CountersGraph.CounterUI = function(memoryCountersPane, title, currentValueLabel, graphColor, counter, formatter)
 {
     this._memoryCountersPane = memoryCountersPane;
     this.counter = counter;
-    var container = memoryCountersPane._infoWidget.element.createChild("div", "memory-counter-sidebar-info");
-    var swatchColor = graphColor;
-    this._swatch = new WebInspector.SwatchCheckbox(WebInspector.UIString(title), swatchColor);
-    this._swatch.addEventListener(WebInspector.SwatchCheckbox.Events.Changed, this._toggleCounterGraph.bind(this));
-    container.appendChild(this._swatch.element);
-    this._range = this._swatch.element.createChild("span");
+    this._formatter = formatter || Number.withThousandsSeparator;
+    var container = memoryCountersPane._infoWidget.element.createChild("div", "memory-counter-selector-info");
+
+    this._setting = WebInspector.settings.createSetting("timelineCountersGraph-" + title, true);
+    this._filter = new WebInspector.ToolbarCheckbox(title, title, this._setting);
+    var color = WebInspector.Color.parse(graphColor).setAlpha(0.5).asString(WebInspector.Color.Format.RGBA);
+    if (color) {
+        this._filter.element.backgroundColor = color;
+        this._filter.element.borderColor = "transparent";
+    }
+    this._filter.inputElement.addEventListener("click", this._toggleCounterGraph.bind(this));
+    container.appendChild(this._filter.element);
+    this._range = this._filter.element.createChild("span", "range");
 
     this._value = memoryCountersPane._currentValuesBar.createChild("span", "memory-counter-value");
     this._value.style.color = graphColor;
@@ -433,12 +421,17 @@ WebInspector.CountersGraph.CounterUI.prototype = {
      */
     setRange: function(minValue, maxValue)
     {
-        this._range.textContent = WebInspector.UIString("[%.0f:%.0f]", minValue, maxValue);
+        var min = this._formatter(minValue);
+        var max = this._formatter(maxValue);
+        this._range.textContent = WebInspector.UIString("[%s\u2009\u2013\u2009%s]", min, max);
     },
 
+    /**
+     * @param {!WebInspector.Event} event
+     */
     _toggleCounterGraph: function(event)
     {
-        this._value.classList.toggle("hidden", !this._swatch.checked);
+        this._value.classList.toggle("hidden", !this._filter.checked());
         this._memoryCountersPane.refresh();
     },
 
@@ -459,7 +452,8 @@ WebInspector.CountersGraph.CounterUI.prototype = {
         if (!this.visible() || !this.counter.values.length || !this.counter.x)
             return;
         var index = this._recordIndexAt(x);
-        this._value.textContent = WebInspector.UIString(this._currentValueLabel, this.counter.values[index]);
+        var value = Number.withThousandsSeparator(this.counter.values[index]);
+        this._value.textContent = WebInspector.UIString(this._currentValueLabel, value);
         var y = this.graphYValues[index] / window.devicePixelRatio;
         this._marker.style.left = x + "px";
         this._marker.style.top = y + "px";
@@ -512,14 +506,14 @@ WebInspector.CountersGraph.CounterUI.prototype = {
         var currentY = Math.round(originY + height - (value - minValue) * yFactor);
         ctx.moveTo(0, currentY);
         for (var i = counter._minimumIndex; i <= counter._maximumIndex; i++) {
-             var x = Math.round(counter.x[i]);
-             ctx.lineTo(x, currentY);
-             var currentValue = values[i];
-             if (typeof currentValue !== "undefined")
+            var x = Math.round(counter.x[i]);
+            ctx.lineTo(x, currentY);
+            var currentValue = values[i];
+            if (typeof currentValue !== "undefined")
                 value = currentValue;
-             currentY = Math.round(originY + height - (value - minValue) * yFactor);
-             ctx.lineTo(x, currentY);
-             yValues[i] = currentY;
+            currentY = Math.round(originY + height - (value - minValue) * yFactor);
+            ctx.lineTo(x, currentY);
+            yValues[i] = currentY;
         }
         yValues.length = i;
         ctx.lineTo(width, currentY);
@@ -541,50 +535,102 @@ WebInspector.CountersGraph.CounterUI.prototype = {
      */
     visible: function()
     {
-        return this._swatch.checked;
+        return this._filter.checked();
     }
 }
 
-
 /**
  * @constructor
- * @extends {WebInspector.Object}
+ * @param {!WebInspector.TimelineModel} model
+ * @implements {WebInspector.TimelineGrid.Calculator}
  */
-WebInspector.SwatchCheckbox = function(title, color)
+WebInspector.CounterGraphCalculator = function(model)
 {
-    this.element = createElement("div");
-    this._swatch = this.element.createChild("div", "swatch");
-    this.element.createChild("span", "title").textContent = title;
-    this._color = color;
-    this.checked = true;
-
-    this.element.addEventListener("click", this._toggleCheckbox.bind(this), true);
+    this._model = model;
 }
 
-WebInspector.SwatchCheckbox.Events = {
-    Changed: "Changed"
-}
+WebInspector.CounterGraphCalculator._minWidth = 5;
 
-WebInspector.SwatchCheckbox.prototype = {
-    get checked()
+WebInspector.CounterGraphCalculator.prototype = {
+    /**
+     * @override
+     * @return {number}
+     */
+    paddingLeft: function()
     {
-        return this._checked;
+        return this._paddingLeft;
     },
 
-    set checked(v)
+    /**
+     * @override
+     * @param {number} time
+     * @return {number}
+     */
+    computePosition: function(time)
     {
-        this._checked = v;
-        if (this._checked)
-            this._swatch.style.backgroundColor = this._color;
-        else
-            this._swatch.style.backgroundColor = "";
+        return (time - this._minimumBoundary) / this.boundarySpan() * this._workingArea + this._paddingLeft;
     },
 
-    _toggleCheckbox: function(event)
+    setWindow: function(minimumBoundary, maximumBoundary)
     {
-        this.checked = !this.checked;
-        this.dispatchEventToListeners(WebInspector.SwatchCheckbox.Events.Changed);
+        this._minimumBoundary = minimumBoundary;
+        this._maximumBoundary = maximumBoundary;
     },
 
-    __proto__: WebInspector.Object.prototype
+    /**
+     * @param {number} clientWidth
+     * @param {number=} paddingLeft
+     */
+    setDisplayWindow: function(clientWidth, paddingLeft)
+    {
+        this._paddingLeft = paddingLeft || 0;
+        this._workingArea = clientWidth - WebInspector.CounterGraphCalculator._minWidth - this._paddingLeft;
+    },
+
+    /**
+     * @override
+     * @param {number} value
+     * @param {number=} precision
+     * @return {string}
+     */
+    formatValue: function(value, precision)
+    {
+        return Number.preciseMillisToString(value - this.zeroTime(), precision);
+    },
+
+    /**
+     * @override
+     * @return {number}
+     */
+    maximumBoundary: function()
+    {
+        return this._maximumBoundary;
+    },
+
+    /**
+     * @override
+     * @return {number}
+     */
+    minimumBoundary: function()
+    {
+        return this._minimumBoundary;
+    },
+
+    /**
+     * @override
+     * @return {number}
+     */
+    zeroTime: function()
+    {
+        return this._model.minimumRecordTime();
+    },
+
+    /**
+     * @override
+     * @return {number}
+     */
+    boundarySpan: function()
+    {
+        return this._maximumBoundary - this._minimumBoundary;
+    }
 }

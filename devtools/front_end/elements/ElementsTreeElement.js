@@ -40,17 +40,16 @@ WebInspector.ElementsTreeElement = function(node, elementCloseTag)
     TreeElement.call(this);
     this._node = node;
 
-    this._decorationsElement = createElementWithClass("div");
-    this.listItemElement.appendChild(this._decorationsElement);
+    this._gutterContainer = this.listItemElement.createChild("div", "gutter-container");
+    this._gutterContainer.addEventListener("click", this._showContextMenu.bind(this));
+    this._decorationsElement = this._gutterContainer.createChild("div", "hidden");
 
     this._elementCloseTag = elementCloseTag;
 
-    if (this._node.nodeType() == Node.ELEMENT_NODE && !elementCloseTag)
+    if (this._node.nodeType() === Node.ELEMENT_NODE && !elementCloseTag)
         this._canAddAttributes = true;
     this._searchQuery = null;
     this._expandedChildrenLimit = WebInspector.ElementsTreeElement.InitialChildrenLimit;
-    if (this._node.nodeType() === Node.ELEMENT_NODE && this._node.parentNode && this._node.parentNode.nodeType() === Node.DOCUMENT_NODE && !this._node.parentNode.parentNode)
-        this.setCollapsible(false);
 }
 
 WebInspector.ElementsTreeElement.InitialChildrenLimit = 500;
@@ -122,7 +121,7 @@ WebInspector.ElementsTreeElement.canShowInlineText = function(node)
 WebInspector.ElementsTreeElement.populateForcedPseudoStateItems = function(subMenu, node)
 {
     const pseudoClasses = ["active", "hover", "focus", "visited"];
-    var forcedPseudoState = WebInspector.CSSStyleModel.fromNode(node).pseudoState(node);
+    var forcedPseudoState = WebInspector.CSSModel.fromNode(node).pseudoState(node);
     for (var i = 0; i < pseudoClasses.length; ++i) {
         var pseudoClassForced = forcedPseudoState.indexOf(pseudoClasses[i]) >= 0;
         subMenu.appendCheckboxItem(":" + pseudoClasses[i], setPseudoStateCallback.bind(null, pseudoClasses[i], !pseudoClassForced), pseudoClassForced, false);
@@ -134,7 +133,7 @@ WebInspector.ElementsTreeElement.populateForcedPseudoStateItems = function(subMe
      */
     function setPseudoStateCallback(pseudoState, enabled)
     {
-        WebInspector.CSSStyleModel.fromNode(node).forcePseudoState(node, pseudoState, enabled);
+        WebInspector.CSSModel.fromNode(node).forcePseudoState(node, pseudoState, enabled);
     }
 }
 
@@ -190,12 +189,12 @@ WebInspector.ElementsTreeElement.prototype = {
         function updateEntryHide(entry)
         {
             switch (entry.type) {
-                case "added":
-                    entry.node.remove();
-                    break;
-                case "changed":
-                    entry.node.textContent = entry.oldText;
-                    break;
+            case "added":
+                entry.node.remove();
+                break;
+            case "changed":
+                entry.node.textContent = entry.oldText;
+                break;
             }
         }
 
@@ -230,7 +229,7 @@ WebInspector.ElementsTreeElement.prototype = {
 
         if (this.listItemElement) {
             if (x) {
-                this.updateSelection();
+                this._createSelection();
                 this.listItemElement.classList.add("hovered");
             } else {
                 this.listItemElement.classList.remove("hovered");
@@ -254,7 +253,7 @@ WebInspector.ElementsTreeElement.prototype = {
         this._expandedChildrenLimit = expandedChildrenLimit;
     },
 
-    updateSelection: function()
+    _createSelection: function()
     {
         var listItemElement = this.listItemElement;
         if (!listItemElement)
@@ -262,11 +261,9 @@ WebInspector.ElementsTreeElement.prototype = {
 
         if (!this.selectionElement) {
             this.selectionElement = createElement("div");
-            this.selectionElement.className = "selection selected";
+            this.selectionElement.className = "selection fill";
             listItemElement.insertBefore(this.selectionElement, listItemElement.firstChild);
         }
-
-        this.selectionElement.style.height = listItemElement.offsetHeight + "px";
     },
 
     /**
@@ -293,7 +290,7 @@ WebInspector.ElementsTreeElement.prototype = {
     onattach: function()
     {
         if (this._hovered) {
-            this.updateSelection();
+            this._createSelection();
             this.listItemElement.classList.add("hovered");
         }
 
@@ -340,7 +337,6 @@ WebInspector.ElementsTreeElement.prototype = {
             return;
 
         this.updateTitle();
-        this.treeOutline.updateSelection();
     },
 
     oncollapse: function()
@@ -349,21 +345,6 @@ WebInspector.ElementsTreeElement.prototype = {
             return;
 
         this.updateTitle();
-        this.treeOutline.updateSelection();
-    },
-
-    /**
-     * @override
-     */
-    onreveal: function()
-    {
-        if (this.listItemElement) {
-            var tagSpans = this.listItemElement.getElementsByClassName("webkit-html-tag-name");
-            if (tagSpans.length)
-                tagSpans[0].scrollIntoViewIfNeeded(true);
-            else
-                this.listItemElement.scrollIntoViewIfNeeded(true);
-        }
     },
 
     /**
@@ -376,8 +357,6 @@ WebInspector.ElementsTreeElement.prototype = {
     {
         if (this._editing)
             return false;
-        if (selectedByUser && this.treeOutline.handlePickNode(this.title, this._node))
-            return true;
         return TreeElement.prototype.select.call(this, omitFocus, selectedByUser);
     },
 
@@ -392,7 +371,7 @@ WebInspector.ElementsTreeElement.prototype = {
         this.treeOutline.selectDOMNode(this._node, selectedByUser);
         if (selectedByUser)
             this._node.highlight();
-        this.updateSelection();
+        this._createSelection();
         this.treeOutline.suppressRevealAndSelect = false;
         return true;
     },
@@ -468,13 +447,11 @@ WebInspector.ElementsTreeElement.prototype = {
             tag.insertBefore(node, tag.lastChild);
         else {
             var nodeName = tag.textContent.match(/^<(.*?)>$/)[1];
-            tag.textContent = '';
-            tag.createTextChild('<' + nodeName);
+            tag.textContent = "";
+            tag.createTextChild("<" + nodeName);
             tag.appendChild(node);
-            tag.createTextChild('>');
+            tag.createTextChild(">");
         }
-
-        this.updateSelection();
     },
 
     /**
@@ -483,13 +460,10 @@ WebInspector.ElementsTreeElement.prototype = {
      */
     _startEditingTarget: function(eventTarget)
     {
-        if (this.treeOutline.selectedDOMNode() != this._node)
+        if (this.treeOutline.selectedDOMNode() !== this._node)
             return false;
 
-        if (this._node.nodeType() != Node.ELEMENT_NODE && this._node.nodeType() != Node.TEXT_NODE)
-            return false;
-
-        if (this.treeOutline.pickNodeMode())
+        if (this._node.nodeType() !== Node.ELEMENT_NODE && this._node.nodeType() !== Node.TEXT_NODE)
             return false;
 
         var textNode = eventTarget.enclosingNodeOrSelfWithClass("webkit-html-text-node");
@@ -512,6 +486,14 @@ WebInspector.ElementsTreeElement.prototype = {
     },
 
     /**
+     * @param {!Event} event
+     */
+    _showContextMenu: function(event)
+    {
+        this.treeOutline.showContextMenu(this, event);
+    },
+
+    /**
      * @param {!WebInspector.ContextMenu} contextMenu
      * @param {!Event} event
      */
@@ -525,11 +507,9 @@ WebInspector.ElementsTreeElement.prototype = {
         var newAttribute = event.target.enclosingNodeOrSelfWithClass("add-attribute");
         if (attribute && !newAttribute)
             contextMenu.appendItem(WebInspector.UIString.capitalize("Edit ^attribute"), this._startEditingAttribute.bind(this, attribute, event.target));
-        contextMenu.appendSeparator();
-        var pseudoSubMenu = contextMenu.appendSubMenuItem(WebInspector.UIString.capitalize("Force ^element ^state"));
-        WebInspector.ElementsTreeElement.populateForcedPseudoStateItems(pseudoSubMenu, treeElement.node());
-        contextMenu.appendSeparator();
         this.populateNodeContextMenu(contextMenu);
+        WebInspector.ElementsTreeElement.populateForcedPseudoStateItems(contextMenu, treeElement.node());
+        contextMenu.appendSeparator();
         this.populateScrollIntoView(contextMenu);
     },
 
@@ -538,7 +518,6 @@ WebInspector.ElementsTreeElement.prototype = {
      */
     populateScrollIntoView: function(contextMenu)
     {
-        contextMenu.appendSeparator();
         contextMenu.appendItem(WebInspector.UIString.capitalize("Scroll into ^view"), this._scrollIntoView.bind(this));
     },
 
@@ -555,24 +534,43 @@ WebInspector.ElementsTreeElement.prototype = {
         var openTagElement = this._node[this.treeOutline.treeElementSymbol()] || this;
         var isEditable = this.hasEditableNode();
         if (isEditable && !this._editing)
-            contextMenu.appendItem(WebInspector.UIString("Edit as HTML"), openTagElement.toggleEditAsHTML.bind(openTagElement));
+            contextMenu.appendItem(WebInspector.UIString("Edit as HTML"), this._editAsHTML.bind(this));
         var isShadowRoot = this._node.isShadowRoot();
 
         // Place it here so that all "Copy"-ing items stick together.
-        if (this._node.nodeType() === Node.ELEMENT_NODE)
-            contextMenu.appendItem(WebInspector.UIString.capitalize("Copy CSS ^path"), this._copyCSSPath.bind(this));
-        if (!isShadowRoot)
-            contextMenu.appendItem(WebInspector.UIString("Copy XPath"), this._copyXPath.bind(this));
+        var copyMenu = contextMenu.appendSubMenuItem(WebInspector.UIString("Copy"));
+        var createShortcut = WebInspector.KeyboardShortcut.shortcutToString;
+        var modifier = WebInspector.KeyboardShortcut.Modifiers.CtrlOrMeta;
+        var treeOutline = this.treeOutline;
+        var menuItem;
         if (!isShadowRoot) {
-            var treeOutline = this.treeOutline;
-            contextMenu.appendSeparator();
-            contextMenu.appendItem(WebInspector.UIString("Cut"), treeOutline.performCopyOrCut.bind(treeOutline, true, this._node), !this.hasEditableNode());
-            contextMenu.appendItem(WebInspector.UIString("Copy"), treeOutline.performCopyOrCut.bind(treeOutline, false, this._node));
-            contextMenu.appendItem(WebInspector.UIString("Paste"), treeOutline.pasteNode.bind(treeOutline, this._node), !treeOutline.canPaste(this._node));
+            menuItem = copyMenu.appendItem(WebInspector.UIString("Copy outerHTML"), treeOutline.performCopyOrCut.bind(treeOutline, false, this._node));
+            menuItem.setShortcut(createShortcut("V", modifier));
+        }
+        if (this._node.nodeType() === Node.ELEMENT_NODE)
+            copyMenu.appendItem(WebInspector.UIString.capitalize("Copy selector"), this._copyCSSPath.bind(this));
+        if (!isShadowRoot)
+            copyMenu.appendItem(WebInspector.UIString("Copy XPath"), this._copyXPath.bind(this));
+        if (!isShadowRoot) {
+            menuItem = copyMenu.appendItem(WebInspector.UIString("Cut element"), treeOutline.performCopyOrCut.bind(treeOutline, true, this._node), !this.hasEditableNode());
+            menuItem.setShortcut(createShortcut("X", modifier));
+            menuItem = copyMenu.appendItem(WebInspector.UIString("Copy element"), treeOutline.performCopyOrCut.bind(treeOutline, false, this._node));
+            menuItem.setShortcut(createShortcut("C", modifier));
+            menuItem = copyMenu.appendItem(WebInspector.UIString("Paste element"), treeOutline.pasteNode.bind(treeOutline, this._node), !treeOutline.canPaste(this._node));
+            menuItem.setShortcut(createShortcut("V", modifier));
         }
 
+        contextMenu.appendSeparator();
+        menuItem = contextMenu.appendCheckboxItem(WebInspector.UIString("Hide element"), treeOutline.toggleHideElement.bind(treeOutline, this._node), treeOutline.isToggledToHidden(this._node));
+        menuItem.setShortcut(WebInspector.shortcutRegistry.shortcutTitleForAction("elements.hide-element"));
+
+
         if (isEditable)
-            contextMenu.appendItem(WebInspector.UIString("Delete"), this.remove.bind(this));
+            contextMenu.appendItem(WebInspector.UIString("Delete element"), this.remove.bind(this));
+        contextMenu.appendSeparator();
+
+        contextMenu.appendItem(WebInspector.UIString("Expand all"), this.expandRecursively.bind(this));
+        contextMenu.appendItem(WebInspector.UIString("Collapse all"), this.collapseRecursively.bind(this));
         contextMenu.appendSeparator();
     },
 
@@ -749,7 +747,7 @@ WebInspector.ElementsTreeElement.prototype = {
          */
         function editingComitted(element, newTagName)
         {
-            tagNameElement.removeEventListener('keyup', keyupListener, false);
+            tagNameElement.removeEventListener("keyup", keyupListener, false);
             this._tagNameEditingCommitted.apply(this, arguments);
         }
 
@@ -758,11 +756,11 @@ WebInspector.ElementsTreeElement.prototype = {
          */
         function editingCancelled()
         {
-            tagNameElement.removeEventListener('keyup', keyupListener, false);
+            tagNameElement.removeEventListener("keyup", keyupListener, false);
             this._editingCancelled.apply(this, arguments);
         }
 
-        tagNameElement.addEventListener('keyup', keyupListener, false);
+        tagNameElement.addEventListener("keyup", keyupListener, false);
 
         var config = new WebInspector.InplaceEditor.Config(editingComitted.bind(this), editingCancelled.bind(this), tagName);
         this._editing = WebInspector.InplaceEditor.startEditing(tagNameElement, config);
@@ -772,10 +770,11 @@ WebInspector.ElementsTreeElement.prototype = {
 
     /**
      * @param {function(string, string)} commitCallback
+     * @param {function()} disposeCallback
      * @param {?Protocol.Error} error
      * @param {string} initialValue
      */
-    _startEditingAsHTML: function(commitCallback, error, initialValue)
+    _startEditingAsHTML: function(commitCallback, disposeCallback, error, initialValue)
     {
         if (error)
             return;
@@ -804,9 +803,8 @@ WebInspector.ElementsTreeElement.prototype = {
             this._childrenListNode.style.display = "none";
         // Append editor.
         this.listItemElement.appendChild(this._htmlEditElement);
+        this.listItemElement.classList.add("editing-as-html");
         this.treeOutline.element.addEventListener("mousedown", consume, false);
-
-        this.updateSelection();
 
         /**
          * @param {!Element} element
@@ -824,9 +822,11 @@ WebInspector.ElementsTreeElement.prototype = {
          */
         function dispose()
         {
+            disposeCallback();
             delete this._editing;
             this.treeOutline.setMultilineEditing(null);
 
+            this.listItemElement.classList.remove("editing-as-html");
             // Remove editor.
             this.listItemElement.removeChild(this._htmlEditElement);
             delete this._htmlEditElement;
@@ -841,7 +841,6 @@ WebInspector.ElementsTreeElement.prototype = {
             }
 
             this.treeOutline.element.removeEventListener("mousedown", consume, false);
-            this.updateSelection();
             this.treeOutline.focus();
         }
 
@@ -913,7 +912,7 @@ WebInspector.ElementsTreeElement.prototype = {
                         this._triggerEditAttribute(attributes[attributes.length - 2].name);
                 }
             } else if (moveDirection === "forward") {
-                if (!/^\s*$/.test(newText))
+                if (!newText.isWhitespace())
                     this._addNewAttribute();
                 else
                     this._startEditingTagName();
@@ -1025,14 +1024,14 @@ WebInspector.ElementsTreeElement.prototype = {
         // in the child element list.
         if (this.expanded) {
             var closers = this._childrenListNode.querySelectorAll(".close");
-            return closers[closers.length-1];
+            return closers[closers.length - 1];
         }
 
         // Remaining cases are single line non-expanded elements with a closing
         // tag, or HTML elements without a closing tag (such as <br>). Return
         // null in the case where there isn't a closing tag.
         var tags = this.listItemElement.getElementsByClassName("webkit-html-tag");
-        return (tags.length === 1 ? null : tags[tags.length-1]);
+        return (tags.length === 1 ? null : tags[tags.length - 1]);
     },
 
     /**
@@ -1067,29 +1066,43 @@ WebInspector.ElementsTreeElement.prototype = {
             highlightElement.appendChild(nodeInfo);
             this.title = highlightElement;
             this.updateDecorations();
-            this.listItemElement.insertBefore(this._decorationsElement, this.listItemElement.firstChild);
+            this.listItemElement.insertBefore(this._gutterContainer, this.listItemElement.firstChild);
             delete this._highlightResult;
         }
 
         delete this.selectionElement;
         if (this.selected)
-            this.updateSelection();
+            this._createSelection();
         this._preventFollowingLinksOnDoubleClick();
         this._highlightSearchResults();
     },
 
     updateDecorations: function()
     {
+        var treeElement = this.parent;
+        var depth = 0;
+        while (treeElement !== null) {
+            depth++;
+            treeElement = treeElement.parent;
+        }
+
+        /** Keep it in sync with elementsTreeOutline.css **/
+        this._gutterContainer.style.left = (-12 * (depth - 2) - (this.isExpandable() ? 1 : 12)) + "px";
+
         if (this.isClosingTag())
             return;
+
         var node = this._node;
         if (node.nodeType() !== Node.ELEMENT_NODE)
             return;
 
-        var extensions = runtime.extensions(WebInspector.DOMPresentationUtils.MarkerDecorator);
+        if (!this.treeOutline._decoratorExtensions)
+            /** @type {!Array.<!Runtime.Extension>} */
+            this.treeOutline._decoratorExtensions = runtime.extensions(WebInspector.DOMPresentationUtils.MarkerDecorator);
+
         var markerToExtension = new Map();
-        for (var extension of extensions)
-            markerToExtension.set(extension.descriptor()["marker"], extension);
+        for (var i = 0; i < this.treeOutline._decoratorExtensions.length; ++i)
+            markerToExtension.set(this.treeOutline._decoratorExtensions[i].descriptor()["marker"], this.treeOutline._decoratorExtensions[i]);
 
         var promises = [];
         var decorations = [];
@@ -1120,22 +1133,26 @@ WebInspector.ElementsTreeElement.prototype = {
             (n === node ? decorations : descendantDecorations).push(decoration);
         }
 
-        Promise.all(promises).then(setTitle.bind(this));
+        Promise.all(promises).then(updateDecorationsUI.bind(this));
 
         /**
          * @this {WebInspector.ElementsTreeElement}
          */
-        function setTitle()
+        function updateDecorationsUI()
         {
             this._decorationsElement.removeChildren();
+            this._decorationsElement.classList.add("hidden");
+            this._gutterContainer.classList.toggle("has-decorations", decorations.length || descendantDecorations.length);
+
             if (!decorations.length && !descendantDecorations.length)
                 return;
 
             var colors = new Set();
-            var titles = [];
+            var titles = createElement("div");
 
             for (var decoration of decorations) {
-                titles.push(decoration.title);
+                var titleElement = titles.createChild("div");
+                titleElement.textContent = decoration.title;
                 colors.add(decoration.color);
             }
             if (this.expanded && !decorations.length)
@@ -1143,9 +1160,12 @@ WebInspector.ElementsTreeElement.prototype = {
 
             var descendantColors = new Set();
             if (descendantDecorations.length) {
-                titles.push(WebInspector.UIString("Children:"));
+                var element = titles.createChild("div");
+                element.textContent = WebInspector.UIString("Children:");
                 for (var decoration of descendantDecorations) {
-                    titles.push(decoration.title);
+                    element = titles.createChild("div");
+                    element.style.marginLeft = "15px";
+                    element.textContent = decoration.title;
                     descendantColors.add(decoration.color);
                 }
             }
@@ -1154,7 +1174,7 @@ WebInspector.ElementsTreeElement.prototype = {
             processColors.call(this, colors, "elements-gutter-decoration");
             if (!this.expanded)
                 processColors.call(this, descendantColors, "elements-gutter-decoration elements-has-decorated-children");
-            WebInspector.Tooltip.install(this._decorationsElement, titles.join("\n"));
+            WebInspector.Tooltip.install(this._decorationsElement, titles);
 
             /**
              * @param {!Set<string>} colors
@@ -1165,6 +1185,7 @@ WebInspector.ElementsTreeElement.prototype = {
             {
                 for (var color of colors) {
                     var child = this._decorationsElement.createChild("div", className);
+                    this._decorationsElement.classList.remove("hidden");
                     child.style.backgroundColor = color;
                     child.style.borderColor = color;
                     if (offset)
@@ -1257,19 +1278,28 @@ WebInspector.ElementsTreeElement.prototype = {
             return anchor;
         }
 
-        if (node && name === "src" || name === "href") {
+        if (node && (name === "src" || name === "href")) {
             attrValueElement.appendChild(linkifyValue.call(this, value));
-        } else if (node && node.nodeName().toLowerCase() === "img" && name === "srcset") {
+        } else if (node && (node.nodeName().toLowerCase() === "img" || node.nodeName().toLowerCase() === "source") && name === "srcset") {
             var sources = value.split(",");
             for (var i = 0; i < sources.length; ++i) {
                 if (i > 0)
                     attrValueElement.createTextChild(", ");
                 var source = sources[i].trim();
                 var indexOfSpace = source.indexOf(" ");
-                var url = source.substring(0, indexOfSpace);
-                var tail = source.substring(indexOfSpace);
+                var url, tail;
+
+                if (indexOfSpace === -1) {
+                    url = source;
+                } else {
+                    url = source.substring(0, indexOfSpace);
+                    tail = source.substring(indexOfSpace);
+                }
+
                 attrValueElement.appendChild(linkifyValue.call(this, url));
-                attrValueElement.createTextChild(tail);
+
+                if (tail)
+                    attrValueElement.createTextChild(tail);
             }
         } else {
             setValueWithEntities.call(this, attrValueElement, value);
@@ -1363,110 +1393,110 @@ WebInspector.ElementsTreeElement.prototype = {
         var titleDOM = createDocumentFragment();
 
         switch (node.nodeType()) {
-            case Node.ATTRIBUTE_NODE:
-                this._buildAttributeDOM(titleDOM, /** @type {string} */ (node.name), /** @type {string} */ (node.value), updateRecord, true);
+        case Node.ATTRIBUTE_NODE:
+            this._buildAttributeDOM(titleDOM, /** @type {string} */ (node.name), /** @type {string} */ (node.value), updateRecord, true);
+            break;
+
+        case Node.ELEMENT_NODE:
+            var pseudoType = node.pseudoType();
+            if (pseudoType) {
+                this._buildPseudoElementDOM(titleDOM, pseudoType);
                 break;
+            }
 
-            case Node.ELEMENT_NODE:
-                var pseudoType = node.pseudoType();
-                if (pseudoType) {
-                    this._buildPseudoElementDOM(titleDOM, pseudoType);
-                    break;
-                }
+            var tagName = node.nodeNameInCorrectCase();
+            if (this._elementCloseTag) {
+                this._buildTagDOM(titleDOM, tagName, true, true, updateRecord);
+                break;
+            }
 
-                var tagName = node.nodeNameInCorrectCase();
-                if (this._elementCloseTag) {
-                    this._buildTagDOM(titleDOM, tagName, true, true, updateRecord);
-                    break;
-                }
+            this._buildTagDOM(titleDOM, tagName, false, false, updateRecord);
 
-                this._buildTagDOM(titleDOM, tagName, false, false, updateRecord);
-
-                if (this.isExpandable()) {
-                    if (!this.expanded) {
-                        var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node bogus");
-                        textNodeElement.textContent = "\u2026";
-                        titleDOM.createTextChild("\u200B");
-                        this._buildTagDOM(titleDOM, tagName, true, false, updateRecord);
-                    }
-                    break;
-                }
-
-                if (WebInspector.ElementsTreeElement.canShowInlineText(node)) {
-                    var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node");
-                    var result = this._convertWhitespaceToEntities(node.firstChild.nodeValue());
-                    textNodeElement.textContent = result.text;
-                    WebInspector.highlightRangesWithStyleClass(textNodeElement, result.entityRanges, "webkit-html-entity-value");
+            if (this.isExpandable()) {
+                if (!this.expanded) {
+                    var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node bogus");
+                    textNodeElement.textContent = "\u2026";
                     titleDOM.createTextChild("\u200B");
                     this._buildTagDOM(titleDOM, tagName, true, false, updateRecord);
-                    if (updateRecord && updateRecord.hasChangedChildren())
-                        WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
-                    if (updateRecord && updateRecord.isCharDataModified())
-                        WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
-                    break;
-                }
-
-                if (this.treeOutline.isXMLMimeType || !WebInspector.ElementsTreeElement.ForbiddenClosingTagElements[tagName])
-                    this._buildTagDOM(titleDOM, tagName, true, false, updateRecord);
-                break;
-
-            case Node.TEXT_NODE:
-                if (node.parentNode && node.parentNode.nodeName().toLowerCase() === "script") {
-                    var newNode = titleDOM.createChild("span", "webkit-html-text-node webkit-html-js-node");
-                    newNode.textContent = node.nodeValue();
-
-                    var javascriptSyntaxHighlighter = new WebInspector.DOMSyntaxHighlighter("text/javascript", true);
-                    javascriptSyntaxHighlighter.syntaxHighlightNode(newNode).then(updateSearchHighlight.bind(this));
-                } else if (node.parentNode && node.parentNode.nodeName().toLowerCase() === "style") {
-                    var newNode = titleDOM.createChild("span", "webkit-html-text-node webkit-html-css-node");
-                    newNode.textContent = node.nodeValue();
-
-                    var cssSyntaxHighlighter = new WebInspector.DOMSyntaxHighlighter("text/css", true);
-                    cssSyntaxHighlighter.syntaxHighlightNode(newNode).then(updateSearchHighlight.bind(this));
-                } else {
-                    titleDOM.createTextChild("\"");
-                    var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node");
-                    var result = this._convertWhitespaceToEntities(node.nodeValue());
-                    textNodeElement.textContent = result.text;
-                    WebInspector.highlightRangesWithStyleClass(textNodeElement, result.entityRanges, "webkit-html-entity-value");
-                    titleDOM.createTextChild("\"");
-                    if (updateRecord && updateRecord.isCharDataModified())
-                        WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
                 }
                 break;
+            }
 
-            case Node.COMMENT_NODE:
-                var commentElement = titleDOM.createChild("span", "webkit-html-comment");
-                commentElement.createTextChild("<!--" + node.nodeValue() + "-->");
+            if (WebInspector.ElementsTreeElement.canShowInlineText(node)) {
+                var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node");
+                var result = this._convertWhitespaceToEntities(node.firstChild.nodeValue());
+                textNodeElement.textContent = result.text;
+                WebInspector.highlightRangesWithStyleClass(textNodeElement, result.entityRanges, "webkit-html-entity-value");
+                titleDOM.createTextChild("\u200B");
+                this._buildTagDOM(titleDOM, tagName, true, false, updateRecord);
+                if (updateRecord && updateRecord.hasChangedChildren())
+                    WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
+                if (updateRecord && updateRecord.isCharDataModified())
+                    WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
                 break;
+            }
 
-            case Node.DOCUMENT_TYPE_NODE:
-                var docTypeElement = titleDOM.createChild("span", "webkit-html-doctype");
-                docTypeElement.createTextChild("<!DOCTYPE " + node.nodeName());
-                if (node.publicId) {
-                    docTypeElement.createTextChild(" PUBLIC \"" + node.publicId + "\"");
-                    if (node.systemId)
-                        docTypeElement.createTextChild(" \"" + node.systemId + "\"");
-                } else if (node.systemId)
-                    docTypeElement.createTextChild(" SYSTEM \"" + node.systemId + "\"");
+            if (this.treeOutline.isXMLMimeType || !WebInspector.ElementsTreeElement.ForbiddenClosingTagElements[tagName])
+                this._buildTagDOM(titleDOM, tagName, true, false, updateRecord);
+            break;
 
-                if (node.internalSubset)
-                    docTypeElement.createTextChild(" [" + node.internalSubset + "]");
+        case Node.TEXT_NODE:
+            if (node.parentNode && node.parentNode.nodeName().toLowerCase() === "script") {
+                var newNode = titleDOM.createChild("span", "webkit-html-text-node webkit-html-js-node");
+                newNode.textContent = node.nodeValue();
 
-                docTypeElement.createTextChild(">");
-                break;
+                var javascriptSyntaxHighlighter = new WebInspector.DOMSyntaxHighlighter("text/javascript", true);
+                javascriptSyntaxHighlighter.syntaxHighlightNode(newNode).then(updateSearchHighlight.bind(this));
+            } else if (node.parentNode && node.parentNode.nodeName().toLowerCase() === "style") {
+                var newNode = titleDOM.createChild("span", "webkit-html-text-node webkit-html-css-node");
+                newNode.textContent = node.nodeValue();
 
-            case Node.CDATA_SECTION_NODE:
-                var cdataElement = titleDOM.createChild("span", "webkit-html-text-node");
-                cdataElement.createTextChild("<![CDATA[" + node.nodeValue() + "]]>");
-                break;
+                var cssSyntaxHighlighter = new WebInspector.DOMSyntaxHighlighter("text/css", true);
+                cssSyntaxHighlighter.syntaxHighlightNode(newNode).then(updateSearchHighlight.bind(this));
+            } else {
+                titleDOM.createTextChild("\"");
+                var textNodeElement = titleDOM.createChild("span", "webkit-html-text-node");
+                var result = this._convertWhitespaceToEntities(node.nodeValue());
+                textNodeElement.textContent = result.text;
+                WebInspector.highlightRangesWithStyleClass(textNodeElement, result.entityRanges, "webkit-html-entity-value");
+                titleDOM.createTextChild("\"");
+                if (updateRecord && updateRecord.isCharDataModified())
+                    WebInspector.runCSSAnimationOnce(textNodeElement, "dom-update-highlight");
+            }
+            break;
 
-            case Node.DOCUMENT_FRAGMENT_NODE:
-                var fragmentElement = titleDOM.createChild("span", "webkit-html-fragment");
-                fragmentElement.textContent = node.nodeNameInCorrectCase().collapseWhitespace();
-                break;
-            default:
-                titleDOM.createTextChild(node.nodeNameInCorrectCase().collapseWhitespace());
+        case Node.COMMENT_NODE:
+            var commentElement = titleDOM.createChild("span", "webkit-html-comment");
+            commentElement.createTextChild("<!--" + node.nodeValue() + "-->");
+            break;
+
+        case Node.DOCUMENT_TYPE_NODE:
+            var docTypeElement = titleDOM.createChild("span", "webkit-html-doctype");
+            docTypeElement.createTextChild("<!DOCTYPE " + node.nodeName());
+            if (node.publicId) {
+                docTypeElement.createTextChild(" PUBLIC \"" + node.publicId + "\"");
+                if (node.systemId)
+                    docTypeElement.createTextChild(" \"" + node.systemId + "\"");
+            } else if (node.systemId)
+                docTypeElement.createTextChild(" SYSTEM \"" + node.systemId + "\"");
+
+            if (node.internalSubset)
+                docTypeElement.createTextChild(" [" + node.internalSubset + "]");
+
+            docTypeElement.createTextChild(">");
+            break;
+
+        case Node.CDATA_SECTION_NODE:
+            var cdataElement = titleDOM.createChild("span", "webkit-html-text-node");
+            cdataElement.createTextChild("<![CDATA[" + node.nodeValue() + "]]>");
+            break;
+
+        case Node.DOCUMENT_FRAGMENT_NODE:
+            var fragmentElement = titleDOM.createChild("span", "webkit-html-fragment");
+            fragmentElement.textContent = node.nodeNameInCorrectCase().collapseWhitespace();
+            break;
+        default:
+            titleDOM.createTextChild(node.nodeNameInCorrectCase().collapseWhitespace());
         }
 
         /**
@@ -1527,8 +1557,14 @@ WebInspector.ElementsTreeElement.prototype = {
                 node.setOuterHTML(value, selectNode);
         }
 
+        function disposeCallback()
+        {
+            if (callback)
+                callback(false);
+        }
+
         var node = this._node;
-        node.getOuterHTML(this._startEditingAsHTML.bind(this, commitChange));
+        node.getOuterHTML(this._startEditingAsHTML.bind(this, commitChange, disposeCallback));
     },
 
     _copyCSSPath: function()
@@ -1583,6 +1619,12 @@ WebInspector.ElementsTreeElement.prototype = {
         }
 
         this._node.resolveToObject("", scrollIntoViewCallback);
+    },
+
+    _editAsHTML: function()
+    {
+        var promise = WebInspector.Revealer.revealPromise(this.node());
+        promise.then(() => WebInspector.actionRegistry.action("elements.edit-as-html").execute());
     },
 
     __proto__: TreeElement.prototype

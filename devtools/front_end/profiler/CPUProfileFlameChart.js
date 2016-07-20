@@ -32,18 +32,16 @@
 /**
  * @constructor
  * @implements {WebInspector.FlameChartDataProvider}
- * @param {!WebInspector.CPUProfileDataModel} cpuProfile
  * @param {?WebInspector.Target} target
  */
-WebInspector.CPUFlameChartDataProvider = function(cpuProfile, target)
+WebInspector.ProfileFlameChartDataProvider = function(target)
 {
     WebInspector.FlameChartDataProvider.call(this);
-    this._cpuProfile = cpuProfile;
     this._target = target;
-    this._colorGenerator = WebInspector.CPUFlameChartDataProvider.colorGenerator();
+    this._colorGenerator = WebInspector.ProfileFlameChartDataProvider.colorGenerator();
 }
 
-WebInspector.CPUFlameChartDataProvider.prototype = {
+WebInspector.ProfileFlameChartDataProvider.prototype = {
     /**
      * @override
      * @return {number}
@@ -97,7 +95,18 @@ WebInspector.CPUFlameChartDataProvider.prototype = {
      */
     totalTime: function()
     {
-        return this._cpuProfile.profileHead.totalTime;
+        return this._cpuProfile.profileHead.total;
+    },
+
+    /**
+     * @override
+     * @param {number} value
+     * @param {number=} precision
+     * @return {string}
+     */
+    formatValue: function(value, precision)
+    {
+        return Number.preciseMillisToString(value, precision);
     },
 
     /**
@@ -123,120 +132,17 @@ WebInspector.CPUFlameChartDataProvider.prototype = {
      */
     _calculateTimelineData: function()
     {
-        /**
-         * @constructor
-         * @param {number} depth
-         * @param {number} duration
-         * @param {number} startTime
-         * @param {number} selfTime
-         * @param {!ProfilerAgent.CPUProfileNode} node
-         */
-        function ChartEntry(depth, duration, startTime, selfTime, node)
-        {
-            this.depth = depth;
-            this.duration = duration;
-            this.startTime = startTime;
-            this.selfTime = selfTime;
-            this.node = node;
-        }
-
-        /** @type {!Array.<?ChartEntry>} */
-        var entries = [];
-        /** @type {!Array.<number>} */
-        var stack = [];
-        var maxDepth = 5;
-
-        function onOpenFrame()
-        {
-            stack.push(entries.length);
-            // Reserve space for the entry, as they have to be ordered by startTime.
-            // The entry itself will be put there in onCloseFrame.
-            entries.push(null);
-        }
-        function onCloseFrame(depth, node, startTime, totalTime, selfTime)
-        {
-            var index = stack.pop();
-            entries[index] = new ChartEntry(depth, totalTime, startTime, selfTime, node);
-            maxDepth = Math.max(maxDepth, depth);
-        }
-        this._cpuProfile.forEachFrame(onOpenFrame, onCloseFrame);
-
-        /** @type {!Array.<!ProfilerAgent.CPUProfileNode>} */
-        var entryNodes = new Array(entries.length);
-        var entryLevels = new Uint8Array(entries.length);
-        var entryTotalTimes = new Float32Array(entries.length);
-        var entrySelfTimes = new Float32Array(entries.length);
-        var entryStartTimes = new Float64Array(entries.length);
-        var minimumBoundary = this.minimumBoundary();
-
-        for (var i = 0; i < entries.length; ++i) {
-            var entry = entries[i];
-            entryNodes[i] = entry.node;
-            entryLevels[i] = entry.depth;
-            entryTotalTimes[i] = entry.duration;
-            entryStartTimes[i] = entry.startTime;
-            entrySelfTimes[i] = entry.selfTime;
-        }
-
-        this._maxStackDepth = maxDepth;
-
-        this._timelineData = new WebInspector.FlameChart.TimelineData(entryLevels, entryTotalTimes, entryStartTimes);
-
-        /** @type {!Array.<!ProfilerAgent.CPUProfileNode>} */
-        this._entryNodes = entryNodes;
-        this._entrySelfTimes = entrySelfTimes;
-
-        return this._timelineData;
-    },
-
-    /**
-     * @param {number} ms
-     * @return {string}
-     */
-    _millisecondsToString: function(ms)
-    {
-        if (ms === 0)
-            return "0";
-        if (ms < 1000)
-            return WebInspector.UIString("%.1f\u2009ms", ms);
-        return Number.secondsToString(ms / 1000, true);
+        throw "Not implemented.";
     },
 
     /**
      * @override
      * @param {number} entryIndex
-     * @return {?Array<!{title: string, value: (string,!Element)}>}
+     * @return {?Array<!{title: string, value: (string|!Element)}>}
      */
     prepareHighlightedEntryInfo: function(entryIndex)
     {
-        var timelineData = this._timelineData;
-        var node = this._entryNodes[entryIndex];
-        if (!node)
-            return null;
-
-        var entryInfo = [];
-        /**
-         * @param {string} title
-         * @param {string} value
-         */
-        function pushEntryInfoRow(title, value)
-        {
-            entryInfo.push({ title: title, value: value });
-        }
-        var name = WebInspector.beautifyFunctionName(node.functionName);
-        pushEntryInfoRow(WebInspector.UIString("Name"), name);
-        var selfTime = this._millisecondsToString(this._entrySelfTimes[entryIndex]);
-        var totalTime = this._millisecondsToString(timelineData.entryTotalTimes[entryIndex]);
-        pushEntryInfoRow(WebInspector.UIString("Self time"), selfTime);
-        pushEntryInfoRow(WebInspector.UIString("Total time"), totalTime);
-        var text = (new WebInspector.Linkifier()).linkifyScriptLocation(this._target, node.scriptId, node.url, node.lineNumber, node.columnNumber).textContent;
-        pushEntryInfoRow(WebInspector.UIString("URL"), text);
-        pushEntryInfoRow(WebInspector.UIString("Aggregated self time"), Number.secondsToString(node.selfTime / 1000, true));
-        pushEntryInfoRow(WebInspector.UIString("Aggregated total time"), Number.secondsToString(node.totalTime / 1000, true));
-        if (node.deoptReason && node.deoptReason !== "no reason")
-            pushEntryInfoRow(WebInspector.UIString("Not optimized"), node.deoptReason);
-
-        return entryInfo;
+        throw "Not implemented.";
     },
 
     /**
@@ -284,7 +190,9 @@ WebInspector.CPUFlameChartDataProvider.prototype = {
     entryColor: function(entryIndex)
     {
         var node = this._entryNodes[entryIndex];
-        return this._colorGenerator.colorForID(node.functionName + ":" + node.url);
+        // For idle and program, we want different 'shades of gray', so we fallback to functionName as scriptId = 0
+        // For rest of nodes e.g eval scripts, if url is empty then scriptId will be guaranteed to be non-zero
+        return this._colorGenerator.colorForID(node.url || (node.scriptId !== "0" ? node.scriptId : node.functionName));
     },
 
     /**
@@ -333,7 +241,7 @@ WebInspector.CPUFlameChartDataProvider.prototype = {
      */
     paddingLeft: function()
     {
-        return 15;
+        return 0;
     },
 
     /**
@@ -351,37 +259,40 @@ WebInspector.CPUFlameChartDataProvider.prototype = {
 /**
  * @return {!WebInspector.FlameChart.ColorGenerator}
  */
-WebInspector.CPUFlameChartDataProvider.colorGenerator = function()
+WebInspector.ProfileFlameChartDataProvider.colorGenerator = function()
 {
-    if (!WebInspector.CPUFlameChartDataProvider._colorGenerator) {
+    if (!WebInspector.ProfileFlameChartDataProvider._colorGenerator) {
         var colorGenerator = new WebInspector.FlameChart.ColorGenerator(
-            { min: 180, max: 310, count: 7 },
+            { min: 30, max: 330 },
             { min: 50, max: 80, count: 5 },
             { min: 80, max: 90, count: 3 });
-        colorGenerator.setColorForID("(idle):", "hsl(0, 0%, 94%)");
-        colorGenerator.setColorForID("(program):", "hsl(0, 0%, 80%)");
-        colorGenerator.setColorForID("(garbage collector):", "hsl(0, 0%, 80%)");
-        WebInspector.CPUFlameChartDataProvider._colorGenerator = colorGenerator;
+
+        colorGenerator.setColorForID("(idle)", "hsl(0, 0%, 94%)");
+        colorGenerator.setColorForID("(program)", "hsl(0, 0%, 80%)");
+        colorGenerator.setColorForID("(garbage collector)", "hsl(0, 0%, 80%)");
+        WebInspector.ProfileFlameChartDataProvider._colorGenerator = colorGenerator;
     }
-    return WebInspector.CPUFlameChartDataProvider._colorGenerator;
+    return WebInspector.ProfileFlameChartDataProvider._colorGenerator;
 }
 
 
 /**
  * @constructor
- * @implements {WebInspector.CPUProfileView.Searchable}
+ * @implements {WebInspector.Searchable}
  * @extends {WebInspector.VBox}
+ * @param {!WebInspector.SearchableView} searchableView
  * @param {!WebInspector.FlameChartDataProvider} dataProvider
  */
-WebInspector.CPUProfileFlameChart = function(dataProvider)
+WebInspector.CPUProfileFlameChart = function(searchableView, dataProvider)
 {
     WebInspector.VBox.call(this);
     this.element.id = "cpu-flame-chart";
 
+    this._searchableView = searchableView;
     this._overviewPane = new WebInspector.CPUProfileFlameChart.OverviewPane(dataProvider);
     this._overviewPane.show(this.element);
 
-    this._mainPane = new WebInspector.FlameChart(dataProvider, this._overviewPane, true);
+    this._mainPane = new WebInspector.FlameChart(dataProvider, this._overviewPane);
     this._mainPane.show(this.element);
     this._mainPane.addEventListener(WebInspector.FlameChart.Events.EntrySelected, this._onEntrySelected, this);
     this._overviewPane.addEventListener(WebInspector.OverviewGrid.Events.WindowChanged, this._onWindowChanged, this);
@@ -433,16 +344,15 @@ WebInspector.CPUProfileFlameChart.prototype = {
      * @param {!WebInspector.SearchableView.SearchConfig} searchConfig
      * @param {boolean} shouldJump
      * @param {boolean=} jumpBackwards
-     * @return {number}
      */
     performSearch: function(searchConfig, shouldJump, jumpBackwards)
     {
-        var matcher = createPlainTextSearchRegex(searchConfig.query, searchConfig.caseSensitive ? "": "i");
+        var matcher = createPlainTextSearchRegex(searchConfig.query, searchConfig.caseSensitive ? "" : "i");
 
         var selectedEntryIndex = this._searchResultIndex !== -1 ? this._searchResults[this._searchResultIndex] : -1;
         this._searchResults = [];
         var entriesCount = this._dataProvider._entryNodes.length;
-        for(var index = 0; index < entriesCount; ++index) {
+        for (var index = 0; index < entriesCount; ++index) {
             if (this._dataProvider.entryTitle(index).match(matcher))
                 this._searchResults.push(index);
         }
@@ -452,10 +362,11 @@ WebInspector.CPUProfileFlameChart.prototype = {
             if (this._searchResultIndex === -1)
                 this._searchResultIndex = jumpBackwards ? this._searchResults.length - 1 : 0;
             this._mainPane.setSelectedEntry(this._searchResults[this._searchResultIndex]);
-        } else
+        } else {
             this.searchCanceled();
-
-        return this._searchResults.length;
+        }
+        this._searchableView.updateSearchMatchesCount(this._searchResults.length);
+        this._searchableView.updateCurrentMatchIndex(this._searchResultIndex);
     },
 
     /**
@@ -475,6 +386,7 @@ WebInspector.CPUProfileFlameChart.prototype = {
     {
         this._searchResultIndex = (this._searchResultIndex + 1) % this._searchResults.length;
         this._mainPane.setSelectedEntry(this._searchResults[this._searchResultIndex]);
+        this._searchableView.updateCurrentMatchIndex(this._searchResultIndex);
     },
 
     /**
@@ -484,15 +396,25 @@ WebInspector.CPUProfileFlameChart.prototype = {
     {
         this._searchResultIndex = (this._searchResultIndex - 1 + this._searchResults.length) % this._searchResults.length;
         this._mainPane.setSelectedEntry(this._searchResults[this._searchResultIndex]);
+        this._searchableView.updateCurrentMatchIndex(this._searchResultIndex);
     },
 
     /**
      * @override
-     * @return {number}
+     * @return {boolean}
      */
-    currentSearchResultIndex: function()
+    supportsCaseSensitiveSearch: function()
     {
-        return this._searchResultIndex;
+        return true;
+    },
+
+    /**
+     * @override
+     * @return {boolean}
+     */
+    supportsRegexSearch: function()
+    {
+        return false;
     },
 
     __proto__: WebInspector.VBox.prototype
@@ -502,8 +424,9 @@ WebInspector.CPUProfileFlameChart.prototype = {
  * @constructor
  * @implements {WebInspector.TimelineGrid.Calculator}
  */
-WebInspector.CPUProfileFlameChart.OverviewCalculator = function()
+WebInspector.CPUProfileFlameChart.OverviewCalculator = function(dataProvider)
 {
+    this._dataProvider = dataProvider;
 }
 
 WebInspector.CPUProfileFlameChart.OverviewCalculator.prototype = {
@@ -543,9 +466,9 @@ WebInspector.CPUProfileFlameChart.OverviewCalculator.prototype = {
      * @param {number=} precision
      * @return {string}
      */
-    formatTime: function(value, precision)
+    formatValue: function(value, precision)
     {
-        return Number.secondsToString((value - this._minimumBoundaries) / 1000, !!precision);
+        return this._dataProvider.formatValue(value - this._minimumBoundaries, precision);
     },
 
     /**
@@ -600,7 +523,7 @@ WebInspector.CPUProfileFlameChart.OverviewPane = function(dataProvider)
     this._overviewGrid.element.classList.add("fill");
     this._overviewCanvas = this._overviewContainer.createChild("canvas", "cpu-profile-flame-chart-overview-canvas");
     this._overviewContainer.appendChild(this._overviewGrid.element);
-    this._overviewCalculator = new WebInspector.CPUProfileFlameChart.OverviewCalculator();
+    this._overviewCalculator = new WebInspector.CPUProfileFlameChart.OverviewCalculator(dataProvider);
     this._dataProvider = dataProvider;
     this._overviewGrid.addEventListener(WebInspector.OverviewGrid.Events.WindowChanged, this._onWindowChanged, this);
 }

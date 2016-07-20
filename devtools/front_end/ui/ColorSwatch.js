@@ -43,6 +43,14 @@ WebInspector.ColorSwatch.prototype = {
     },
 
     /**
+     * @param {boolean} hide
+     */
+    hideText: function(hide)
+    {
+        this._colorValueElement.hidden = hide;
+    },
+
+    /**
      * @return {!WebInspector.Color.Format}
      */
     format: function()
@@ -78,8 +86,7 @@ WebInspector.ColorSwatch.prototype = {
 
     createdCallback: function()
     {
-        var root = WebInspector.createShadowRootWithCoreStyles(this);
-        root.appendChild(WebInspector.Widget.createStyleElement("ui/colorSwatch.css"));
+        var root = WebInspector.createShadowRootWithCoreStyles(this, "ui/colorSwatch.css");
 
         this._iconElement = root.createChild("span", "color-swatch");
         this._iconElement.title = WebInspector.UIString("Shift-click to change color format");
@@ -119,41 +126,38 @@ WebInspector.ColorSwatch._nextColorFormat = function(color, curFormat)
     // * rgb(a)
     // * hsl(a)
     // * nickname (if the color has a nickname)
-    // * if the color is simple:
-    //   - shorthex (if has short hex)
-    //   - hex
+    // * shorthex (if has short hex)
+    // * hex
     var cf = WebInspector.Color.Format;
 
     switch (curFormat) {
-        case cf.Original:
-            return !color.hasAlpha() ? cf.RGB : cf.RGBA;
+    case cf.Original:
+        return !color.hasAlpha() ? cf.RGB : cf.RGBA;
 
-        case cf.RGB:
-        case cf.RGBA:
-            return !color.hasAlpha() ? cf.HSL : cf.HSLA;
+    case cf.RGB:
+    case cf.RGBA:
+        return !color.hasAlpha() ? cf.HSL : cf.HSLA;
 
-        case cf.HSL:
-        case cf.HSLA:
-            if (color.nickname())
-                return cf.Nickname;
-            if (!color.hasAlpha())
-                return color.canBeShortHex() ? cf.ShortHEX : cf.HEX;
-            else
-                return cf.Original;
+    case cf.HSL:
+    case cf.HSLA:
+        if (color.nickname())
+            return cf.Nickname;
+        return color.detectHEXFormat();
 
-        case cf.ShortHEX:
-            return cf.HEX;
+    case cf.ShortHEX:
+        return cf.HEX;
 
-        case cf.HEX:
-            return cf.Original;
+    case cf.ShortHEXA:
+        return cf.HEXA;
 
-        case cf.Nickname:
-            if (!color.hasAlpha())
-                return color.canBeShortHex() ? cf.ShortHEX : cf.HEX;
-            else
-                return cf.Original;
+    case cf.HEXA:
+    case cf.HEX:
+        return cf.Original;
 
-        default:
-            return cf.RGBA;
+    case cf.Nickname:
+        return color.detectHEXFormat();
+
+    default:
+        return cf.RGBA;
     }
 }

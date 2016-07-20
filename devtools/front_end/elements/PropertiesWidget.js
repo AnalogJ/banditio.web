@@ -158,7 +158,19 @@ WebInspector.PropertiesWidget.prototype = {
                 this.element.appendChild(section.element);
                 if (expanded[this.sections.length - 1])
                     section.expand();
+                section.addEventListener(TreeOutline.Events.ElementExpanded, this._propertyExpanded, this);
             }
+        }
+    },
+
+    /**
+     * @param {!WebInspector.Event} event
+     */
+    _propertyExpanded: function(event)
+    {
+        WebInspector.userMetrics.actionTaken(WebInspector.UserMetrics.Action.DOMPropertiesExpanded);
+        for (var section of this.sections) {
+            section.removeEventListener(TreeOutline.Events.ElementExpanded, this._propertyExpanded, this);
         }
     },
 

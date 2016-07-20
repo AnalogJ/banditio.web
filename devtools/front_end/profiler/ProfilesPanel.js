@@ -57,6 +57,14 @@ WebInspector.ProfileType.Events = {
 
 WebInspector.ProfileType.prototype = {
     /**
+     * @return {string}
+     */
+    typeName: function()
+    {
+        return "";
+    },
+
+    /**
      * @return {number}
      */
     nextProfileUid: function()
@@ -163,13 +171,11 @@ WebInspector.ProfileType.prototype = {
     },
 
     /**
-     * @nosideeffects
      * @param {number} uid
      * @return {?WebInspector.ProfileHeader}
      */
     getProfile: function(uid)
     {
-
         for (var i = 0; i < this._profiles.length; ++i) {
             if (this._profiles[i].uid === uid)
                 return this._profiles[i];
@@ -242,10 +248,6 @@ WebInspector.ProfileType.prototype = {
      */
     setProfileBeingRecorded: function(profile)
     {
-        if (this._profileBeingRecorded && this._profileBeingRecorded.target())
-            WebInspector.targetManager.resumeAllTargets();
-        if (profile && profile.target())
-            WebInspector.targetManager.suspendAllTargets();
         this._profileBeingRecorded = profile;
     },
 
@@ -462,18 +464,18 @@ WebInspector.ProfilesPanel = function()
     this.panelSidebarElement().classList.add("profiles-sidebar-tree-box");
     var toolbarContainerLeft = createElementWithClass("div", "profiles-toolbar");
     this.panelSidebarElement().insertBefore(toolbarContainerLeft, this.panelSidebarElement().firstChild);
-    var toolbar = new WebInspector.Toolbar(toolbarContainerLeft);
+    var toolbar = new WebInspector.Toolbar("", toolbarContainerLeft);
 
-    this.recordButton = new WebInspector.ToolbarButton("", "record-toolbar-item");
-    this.recordButton.addEventListener("click", this.toggleRecordButton, this);
-    toolbar.appendToolbarItem(this.recordButton);
+    this._toggleRecordAction = /** @type {!WebInspector.Action }*/ (WebInspector.actionRegistry.action("profiler.toggle-recording"));
+    this._toggleRecordButton = WebInspector.Toolbar.createActionButton(this._toggleRecordAction);
+    toolbar.appendToolbarItem(this._toggleRecordButton);
 
     this.clearResultsButton = new WebInspector.ToolbarButton(WebInspector.UIString("Clear all profiles"), "clear-toolbar-item");
     this.clearResultsButton.addEventListener("click", this._reset, this);
     toolbar.appendToolbarItem(this.clearResultsButton);
 
-    this._profileTypeToolbar = new WebInspector.Toolbar(this._toolbarElement);
-    this._profileViewToolbar = new WebInspector.Toolbar(this._toolbarElement);
+    this._profileTypeToolbar = new WebInspector.Toolbar("", this._toolbarElement);
+    this._profileViewToolbar = new WebInspector.Toolbar("", this._toolbarElement);
 
     this._profileGroups = {};
     this._launcherView = new WebInspector.MultiProfileLauncherView(this);
@@ -490,12 +492,27 @@ WebInspector.ProfilesPanel = function()
 
     this._createFileSelectorElement();
     this.element.addEventListener("contextmenu", this._handleContextMenuEvent.bind(this), true);
-    this._registerShortcuts();
+
+    this.contentElement.addEventListener("keydown", this._onKeyDown.bind(this), false);
 
     WebInspector.targetManager.addEventListener(WebInspector.TargetManager.Events.SuspendStateChanged, this._onSuspendStateChanged, this);
 }
 
 WebInspector.ProfilesPanel.prototype = {
+    /**
+     * @param {!Event} event
+     */
+    _onKeyDown: function(event)
+    {
+        var handled = false;
+        if (event.key === "ArrowDown" && !event.altKey)
+            handled = this._sidebarTree.selectNext();
+        else if (event.key === "ArrowUp" && !event.altKey)
+            handled = this._sidebarTree.selectPrevious();
+        if (handled)
+            event.consume(true);
+    },
+
     /**
      * @override
      * @return {?WebInspector.SearchableView}
@@ -525,11 +542,6 @@ WebInspector.ProfilesPanel.prototype = {
                 return type;
         }
         return null;
-    },
-
-    _registerShortcuts: function()
-    {
-        this.registerShortcuts(WebInspector.ShortcutsScreen.ProfilesPanelShortcuts.StartStopRecording, this.toggleRecordButton.bind(this));
     },
 
     /**
@@ -564,13 +576,13 @@ WebInspector.ProfilesPanel.prototype = {
     /**
      * @return {boolean}
      */
-    toggleRecordButton: function()
+    toggleRecord: function()
     {
-        if (!this.recordButton.enabled())
+        if (!this._toggleRecordAction.enabled())
             return true;
         var type = this._selectedProfileType;
         var isProfiling = type.buttonClicked();
-        this._updateRecordButton(isProfiling);
+        this._updateToggleRecordAction(isProfiling);
         if (isProfiling) {
             this._launcherView.profileStarted();
             if (type.hasTemporaryView())
@@ -583,28 +595,28 @@ WebInspector.ProfilesPanel.prototype = {
 
     _onSuspendStateChanged: function()
     {
-        this._updateRecordButton(this.recordButton.toggled());
+        this._updateToggleRecordAction(this._toggleRecordAction.toggled());
     },
 
     /**
      * @param {boolean} toggled
      */
-    _updateRecordButton: function(toggled)
+    _updateToggleRecordAction: function(toggled)
     {
         var enable = toggled || !WebInspector.targetManager.allTargetsSuspended();
-        this.recordButton.setEnabled(enable);
-        this.recordButton.setToggled(toggled);
+        this._toggleRecordAction.setEnabled(enable);
+        this._toggleRecordAction.setToggled(toggled);
         if (enable)
-            this.recordButton.setTitle(this._selectedProfileType ? this._selectedProfileType.buttonTooltip : "");
+            this._toggleRecordButton.setTitle(this._selectedProfileType ? this._selectedProfileType.buttonTooltip : "");
         else
-            this.recordButton.setTitle(WebInspector.anotherProfilerActiveLabel());
+            this._toggleRecordButton.setTitle(WebInspector.anotherProfilerActiveLabel());
         if (this._selectedProfileType)
             this._launcherView.updateProfileType(this._selectedProfileType, enable);
     },
 
     _profileBeingRecordedRemoved: function()
     {
-        this._updateRecordButton(false);
+        this._updateToggleRecordAction(false);
         this._launcherView.profileFinished();
     },
 
@@ -619,7 +631,7 @@ WebInspector.ProfilesPanel.prototype = {
 
     _updateProfileTypeSpecificUI: function()
     {
-        this._updateRecordButton(this.recordButton.toggled());
+        this._updateToggleRecordAction(this._toggleRecordAction.toggled());
         this._profileTypeToolbar.removeToolbarItems();
         var toolbarItems = this._selectedProfileType.toolbarItems();
         for (var i = 0; i < toolbarItems.length; ++i)
@@ -637,7 +649,7 @@ WebInspector.ProfilesPanel.prototype = {
         delete this.visibleView;
 
         this._profileGroups = {};
-        this._updateRecordButton(false);
+        this._updateToggleRecordAction(false);
         this._launcherView.profileFinished();
 
         this._sidebarTree.element.classList.remove("some-expandable");
@@ -648,7 +660,6 @@ WebInspector.ProfilesPanel.prototype = {
 
         this.removeAllListeners();
 
-        this.recordButton.setVisible(true);
         this._profileViewToolbar.element.classList.remove("hidden");
         this.clearResultsButton.element.classList.remove("hidden");
         this.profilesItemTreeElement.select();
@@ -908,6 +919,16 @@ WebInspector.ProfilesPanel.prototype = {
         }
 
         contextMenu.appendItem(WebInspector.UIString.capitalize("Reveal in Summary ^view"), revealInView.bind(this, "Summary"));
+    },
+
+    wasShown: function()
+    {
+        WebInspector.context.setFlavor(WebInspector.ProfilesPanel, this);
+    },
+
+    willHide: function()
+    {
+        WebInspector.context.setFlavor(WebInspector.ProfilesPanel, null);
     },
 
     __proto__: WebInspector.PanelWithSidebar.prototype
@@ -1267,5 +1288,29 @@ WebInspector.ProfilesPanelFactory.prototype = {
     createPanel: function()
     {
         return WebInspector.ProfilesPanel._instance();
+    }
+}
+
+/**
+ * @constructor
+ * @implements {WebInspector.ActionDelegate}
+ */
+WebInspector.ProfilesPanel.RecordActionDelegate = function()
+{
+}
+
+WebInspector.ProfilesPanel.RecordActionDelegate.prototype = {
+    /**
+     * @override
+     * @param {!WebInspector.Context} context
+     * @param {string} actionId
+     * @return {boolean}
+     */
+    handleAction: function(context, actionId)
+    {
+        var panel = WebInspector.context.flavor(WebInspector.ProfilesPanel);
+        console.assert(panel && panel instanceof WebInspector.ProfilesPanel);
+        panel.toggleRecord();
+        return true;
     }
 }

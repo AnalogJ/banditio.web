@@ -78,7 +78,7 @@ WebInspector.CSSMetadata.cssPropertiesMetainfo = new WebInspector.CSSMetadata([]
  */
 WebInspector.CSSMetadata.isColorAwareProperty = function(propertyName)
 {
-    return !!WebInspector.CSSMetadata._colorAwareProperties[propertyName.toLowerCase()];
+    return !!WebInspector.CSSMetadata._colorAwareProperties[propertyName.toLowerCase()] || WebInspector.CSSMetadata.isCustomProperty(propertyName.toLowerCase());
 }
 
 /**
@@ -100,7 +100,16 @@ WebInspector.CSSMetadata.isLengthProperty = function(propertyName)
  */
 WebInspector.CSSMetadata.isBezierAwareProperty = function(propertyName)
 {
-    return !!WebInspector.CSSMetadata._bezierAwareProperties[propertyName.toLowerCase()];
+    return !!WebInspector.CSSMetadata._bezierAwareProperties[propertyName.toLowerCase()] || WebInspector.CSSMetadata.isCustomProperty(propertyName.toLowerCase());
+}
+
+/**
+ * @param {string} propertyName
+ * @return {boolean}
+ */
+WebInspector.CSSMetadata.isCustomProperty = function(propertyName)
+{
+    return propertyName.startsWith("--");
 }
 
 // Originally taken from http://www.w3.org/TR/CSS21/propidx.html and augmented.
@@ -138,6 +147,18 @@ WebInspector.CSSMetadata.canonicalPropertyName = function(name)
  * @param {string} propertyName
  * @return {boolean}
  */
+WebInspector.CSSMetadata.isCSSPropertyName = function(propertyName)
+{
+    if (propertyName.startsWith("-moz-") || propertyName.startsWith("-o-") || propertyName.startsWith("-webkit-") || propertyName.startsWith("-ms-"))
+        return true;
+    var hasSupportedProperties = WebInspector.CSSMetadata.cssPropertiesMetainfo._values.length > 0;
+    return !hasSupportedProperties || WebInspector.CSSMetadata.cssPropertiesMetainfoKeySet().hasOwnProperty(propertyName);
+}
+
+/**
+ * @param {string} propertyName
+ * @return {boolean}
+ */
 WebInspector.CSSMetadata.isPropertyInherited = function(propertyName)
 {
     return !!(WebInspector.CSSMetadata.InheritedProperties[WebInspector.CSSMetadata.canonicalPropertyName(propertyName)]
@@ -145,8 +166,8 @@ WebInspector.CSSMetadata.isPropertyInherited = function(propertyName)
 }
 
 WebInspector.CSSMetadata._distanceProperties = [
-    'background-position', 'border-spacing', 'bottom', 'font-size', 'height', 'left', 'letter-spacing', 'max-height', 'max-width', 'min-height',
-    'min-width', 'right', 'text-indent', 'top', 'width', 'word-spacing'
+    "background-position", "border-spacing", "bottom", "font-size", "height", "left", "letter-spacing", "max-height", "max-width", "min-height",
+    "min-width", "right", "text-indent", "top", "width", "word-spacing"
 ];
 
 WebInspector.CSSMetadata._bezierAwareProperties = [
@@ -205,18 +226,17 @@ WebInspector.CSSMetadata._propertyDataMap = {
         "normal", "wider", "narrower", "ultra-condensed", "extra-condensed", "condensed", "semi-condensed",
         "semi-expanded", "expanded", "extra-expanded", "ultra-expanded"
     ] },
-    "-webkit-background-composite": { values: [
-        "highlight", "clear", "copy", "source-over", "source-in", "source-out", "source-atop", "destination-over",
-        "destination-in", "destination-out", "destination-atop", "xor", "plus-darker", "plus-lighter"
-    ] },
     "border-left-width": { values: [
         "medium", "thick", "thin"
     ] },
     "box-shadow": { values: [
         "inset", "none"
     ] },
+    "writing-mode": { values: [
+        "horizontal-tb", "vertical-rl", "vertical-lr"
+    ] },
     "-webkit-writing-mode": { values: [
-        "lr", "rl", "tb", "lr-tb", "rl-tb", "tb-rl", "horizontal-tb", "vertical-rl", "vertical-lr", "horizontal-bt"
+        "lr", "rl", "tb", "lr-tb", "rl-tb", "tb-rl", "horizontal-tb", "vertical-rl", "vertical-lr"
     ] },
     "border-collapse": { values: [
         "collapse", "separate"
@@ -272,6 +292,9 @@ WebInspector.CSSMetadata._propertyDataMap = {
     ] },
     "overflow": { values: [
         "hidden", "auto", "visible", "overlay", "scroll"
+    ] },
+    "contain": { values: [
+        "none", "strict", "content", "size", "layout", "style", "paint"
     ] },
     "text-rendering": { values: [
         "auto", "optimizeSpeed", "optimizeLegibility", "geometricPrecision"
@@ -336,8 +359,14 @@ WebInspector.CSSMetadata._propertyDataMap = {
         "lower-armenian", "upper-armenian", "georgian", "cjk-ideographic", "hiragana", "katakana", "hiragana-iroha",
         "katakana-iroha"
     ] },
+    "text-combine-upright": { values: [
+        "none", "all"
+    ] },
     "-webkit-text-combine": { values: [
         "none", "horizontal"
+    ] },
+    "text-orientation": { values: [
+        "mixed", "upright", "sideways"
     ] },
     "outline": { values: [
         "none", "hidden", "inset", "groove", "ridge", "outset", "dotted", "dashed", "solid", "double"
@@ -403,7 +432,7 @@ WebInspector.CSSMetadata._propertyDataMap = {
         "repeat", "stretch"
     ] },
     "text-decoration": { values: [
-        "blink", "line-through", "overline", "underline"
+        "none", "blink", "line-through", "overline", "underline"
     ] },
     "position": { values: [
         "absolute", "fixed", "relative", "static"
@@ -584,6 +613,12 @@ WebInspector.CSSMetadata._propertyDataMap = {
     "-webkit-line-break": { values: [
         "auto", "loose", "normal", "strict"
     ] },
+    "-webkit-user-select": { values: [
+        "none", "text", "all"
+    ] },
+    "-webkit-user-modify": { values: [
+        "read-only", "read-write", "read-write-plaintext-only"
+    ] },
     "text-align-last": { values: [
         "auto", "start", "end", "left", "right", "center", "justify"
     ] },
@@ -595,7 +630,15 @@ WebInspector.CSSMetadata._propertyDataMap = {
     ] },
     "-webkit-text-decoration-skip": { values: [
         "none", "objects", "spaces", "ink", "edges", "box-decoration"
-    ] }
+    ] },
+    "mix-blend-mode": { values: [
+        "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light",
+        "difference", "exclusion", "hue", "saturation", "color", "luminosity", "unset"
+    ] },
+    "background-blend-mode": { values: [
+        "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light", "soft-light",
+        "difference", "exclusion", "hue", "saturation", "color", "luminosity", "unset"
+    ] },
 }
 
 /**

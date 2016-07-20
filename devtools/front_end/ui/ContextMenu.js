@@ -152,13 +152,16 @@ WebInspector.ContextSubMenuItem.prototype = {
     },
 
     /**
-     * @param {string} label
      * @param {string} actionId
+     * @param {string=} label
      * @return {!WebInspector.ContextMenuItem}
      */
-    appendAction: function(label, actionId)
+    appendAction: function(actionId, label)
     {
-        var result = this.appendItem(label, WebInspector.actionRegistry.execute.bind(WebInspector.actionRegistry, actionId));
+        var action = WebInspector.actionRegistry.action(actionId);
+        if (!label)
+            label = action.title();
+        var result = this.appendItem(label, action.execute.bind(action));
         var shortcut = WebInspector.shortcutRegistry.shortcutTitleForAction(actionId);
         if (shortcut)
             result.setShortcut(shortcut);
@@ -168,11 +171,14 @@ WebInspector.ContextSubMenuItem.prototype = {
     /**
      * @param {string} label
      * @param {boolean=} disabled
+     * @param {string=} subMenuId
      * @return {!WebInspector.ContextSubMenuItem}
      */
-    appendSubMenuItem: function(label, disabled)
+    appendSubMenuItem: function(label, disabled, subMenuId)
     {
         var item = new WebInspector.ContextSubMenuItem(this._contextMenu, label, disabled);
+        if (subMenuId)
+            this._contextMenu._namedSubMenus.set(subMenuId, item);
         this._pushItem(item);
         return item;
     },
@@ -230,6 +236,58 @@ WebInspector.ContextSubMenuItem.prototype = {
         return result;
     },
 
+    /**
+     * @param {string} location
+     */
+    appendItemsAtLocation: function(location)
+    {
+        /**
+         * @param {!WebInspector.ContextSubMenuItem} menu
+         * @param {!Runtime.Extension} extension
+         */
+        function appendExtension(menu, extension)
+        {
+            var subMenuId = extension.descriptor()["subMenuId"];
+            if (subMenuId) {
+                var subMenuItem = menu.appendSubMenuItem(extension.title(), false, subMenuId);
+                subMenuItem.appendItemsAtLocation(subMenuId);
+            } else {
+                menu.appendAction(extension.descriptor()["actionId"]);
+            }
+        }
+
+        // Hard-coded named groups for elements to maintain generic order.
+        var groupWeights = ["new", "open", "clipboard", "navigate", "footer"];
+
+        /** @type {!Map.<string, !Array.<!Runtime.Extension>>} */
+        var groups = new Map();
+        var extensions = self.runtime.extensions("context-menu-item");
+        for (var extension of extensions) {
+            var itemLocation = extension.descriptor()["location"] || "";
+            if (!itemLocation.startsWith(location + "/"))
+                continue;
+
+            var itemGroup = itemLocation.substr(location.length + 1);
+            if (!itemGroup || itemGroup.includes("/"))
+                continue;
+            var group = groups.get(itemGroup);
+            if (!group) {
+                group = [];
+                groups.set(itemGroup, group);
+                if (groupWeights.indexOf(itemGroup) === -1)
+                    groupWeights.splice(4, 0, itemGroup);
+            }
+            group.push(extension);
+        }
+        for (var groupName of groupWeights) {
+            var group = groups.get(groupName);
+            if (!group)
+                continue;
+            group.forEach(appendExtension.bind(null, this));
+            this.appendSeparator();
+        }
+    },
+
     __proto__: WebInspector.ContextMenuItem.prototype
 }
 
@@ -246,7 +304,7 @@ WebInspector.ContextMenu = function(event, useSoftMenu, x, y)
     WebInspector.ContextSubMenuItem.call(this, this, "");
     /** @type {!Array.<!Promise.<!Array.<!WebInspector.ContextMenu.Provider>>>} */
     this._pendingPromises = [];
-    /** @type {!Array.<!Promise.<!Object>>} */
+    /** @type {!Array<!Object>} */
     this._pendingTargets = [];
     this._event = event;
     this._useSoftMenu = !!useSoftMenu;
@@ -254,6 +312,8 @@ WebInspector.ContextMenu = function(event, useSoftMenu, x, y)
     this._y = y === undefined ? event.y : y;
     this._handlers = {};
     this._id = 0;
+    /** @type {!Map<string, !WebInspector.ContextSubMenuItem>} */
+    this._namedSubMenus = new Map();
 }
 
 WebInspector.ContextMenu.initialize = function()
@@ -295,16 +355,24 @@ WebInspector.ContextMenu.prototype = {
         return this._id++;
     },
 
+    /**
+     * @param {function()} callback
+     */
+    beforeShow: function(callback)
+    {
+        this._beforeShow = callback;
+    },
+
     show: function()
     {
-        Promise.all(this._pendingPromises).then(populateAndShow.bind(this));
+        Promise.all(this._pendingPromises).then(populate.bind(this)).then(this._innerShow.bind(this));
         WebInspector.ContextMenu._pendingMenu = this;
 
         /**
          * @param {!Array.<!Array.<!WebInspector.ContextMenu.Provider>>} appendCallResults
          * @this {WebInspector.ContextMenu}
          */
-        function populateAndShow(appendCallResults)
+        function populate(appendCallResults)
         {
             if (WebInspector.ContextMenu._pendingMenu !== this)
                 return;
@@ -324,7 +392,6 @@ WebInspector.ContextMenu.prototype = {
 
             this._pendingPromises = [];
             this._pendingTargets = [];
-            this._innerShow();
         }
 
         this._event.consume(true);
@@ -338,6 +405,11 @@ WebInspector.ContextMenu.prototype = {
 
     _innerShow: function()
     {
+        if (typeof this._beforeShow === "function") {
+            this._beforeShow();
+            delete this._beforeShow;
+        }
+
         var menuObject = this._buildDescriptors();
 
         WebInspector._contextMenu = this;
@@ -346,8 +418,19 @@ WebInspector.ContextMenu.prototype = {
             this._softMenu.show(this._event.target.ownerDocument, this._x, this._y);
         } else {
             InspectorFrontendHost.showContextMenuAtPoint(this._x, this._y, menuObject, this._event.target.ownerDocument);
-            InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.ContextMenuCleared, this._menuCleared, this);
-            InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this._onItemSelected, this);
+
+            /**
+             * @this {WebInspector.ContextMenu}
+             */
+            function listenToEvents()
+            {
+                InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.ContextMenuCleared, this._menuCleared, this);
+                InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.ContextMenuItemSelected, this._onItemSelected, this);
+            }
+
+            // showContextMenuAtPoint call above synchronously issues a clear event for previous context menu (if any),
+            // so we skip it before subscribing to the clear event.
+            setImmediate(listenToEvents.bind(this));
         }
     },
 
@@ -406,38 +489,12 @@ WebInspector.ContextMenu.prototype = {
     },
 
     /**
-     * @param {string} location
+     * @param {string} name
+     * @return {?WebInspector.ContextSubMenuItem}
      */
-    appendItemsAtLocation: function(location)
+    namedSubMenu: function(name)
     {
-        // Hard-coded named groups for elements to maintain generic order.
-        var groupWeights = ["new", "open", "clipboard", "navigate", "footer"];
-
-        var groups = new Map();
-        var extensions = self.runtime.extensions("context-menu-item");
-        for (var extension of extensions) {
-            var itemLocation = extension.descriptor()["location"] || "";
-            if (itemLocation !== location && !itemLocation.startsWith(location + "/"))
-                continue;
-
-            var itemGroup = itemLocation.includes("/") ? itemLocation.substr(location.length + 1) : "misc";
-            var group = groups.get(itemGroup);
-            if (!group) {
-                group = [];
-                groups.set(itemGroup, group);
-                if (groupWeights.indexOf(itemGroup) === -1)
-                    groupWeights.splice(4, 0, itemGroup);
-            }
-            group.push(extension);
-        }
-        for (var groupName of groupWeights) {
-            var group = groups.get(groupName);
-            if (!group)
-                continue;
-            for (var extension of group)
-                this.appendAction(extension.title(), extension.descriptor()["actionId"]);
-            this.appendSeparator();
-        }
+        return this._namedSubMenus.get(name) || null;
     },
 
     __proto__: WebInspector.ContextSubMenuItem.prototype

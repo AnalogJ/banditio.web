@@ -48,6 +48,21 @@ WebInspector.NetworkDataGridNode._hoveredRowSymbol = Symbol("hoveredRow");
 
 WebInspector.NetworkDataGridNode.prototype = {
     /**
+     * @return {string}
+     */
+    displayType: function()
+    {
+        var mimeType = this._request.mimeType || this._request.requestContentType() || "";
+        var resourceType = this._request.resourceType();
+        var simpleType = resourceType.name();
+
+        if (resourceType === WebInspector.resourceTypes.Other || resourceType === WebInspector.resourceTypes.Image)
+            simpleType = mimeType.replace(/^(application|image)\//, "");
+
+        return simpleType;
+    },
+
+    /**
      * @return {!WebInspector.NetworkRequest}
      */
     request: function()
@@ -106,6 +121,7 @@ WebInspector.NetworkDataGridNode.prototype = {
         case "remoteAddress": cell.setTextAndTitle(this._request.remoteAddress()); break;
         case "cookies": cell.setTextAndTitle(this._arrayLength(this._request.requestCookies)); break;
         case "setCookies": cell.setTextAndTitle(this._arrayLength(this._request.responseCookies)); break;
+        case "priority": cell.setTextAndTitle(WebInspector.uiLabelForPriority(this._request.initialPriority())); break;
         case "connectionId": cell.setTextAndTitle(this._request.connectionId); break;
         case "type": this._renderTypeCell(cell); break;
         case "initiator": this._renderInitiatorCell(cell); break;
@@ -260,7 +276,7 @@ WebInspector.NetworkDataGridNode.prototype = {
     {
         cell.classList.toggle("network-dim-cell", !this._isFailed() && (this._request.cached() || !this._request.statusCode));
 
-        if (this._request.failed && !this._request.canceled && !this._request.blocked) {
+        if (this._request.failed && !this._request.canceled && !this._request.wasBlocked()) {
             var failText = WebInspector.UIString("(failed)");
             if (this._request.localizedFailDescription) {
                 cell.createTextChild(failText);
@@ -268,8 +284,6 @@ WebInspector.NetworkDataGridNode.prototype = {
                 cell.title = failText + " " + this._request.localizedFailDescription;
             } else
                 cell.setTextAndTitle(failText);
-        } else if (this._request.statusText == "Service Worker Fallback Required") {
-            cell.setTextAndTitle(WebInspector.UIString("(Service Worker Fallback)"));
         } else if (this._request.statusCode) {
             cell.createTextChild("" + this._request.statusCode);
             this._appendSubtitle(cell, this._request.statusText);
@@ -278,8 +292,26 @@ WebInspector.NetworkDataGridNode.prototype = {
             cell.setTextAndTitle(WebInspector.UIString("(data)"));
         } else if (this._request.canceled) {
             cell.setTextAndTitle(WebInspector.UIString("(canceled)"));
-        } else if (this._request.blocked) {
-            cell.setTextAndTitle(WebInspector.UIString("(blocked)"));
+        } else if (this._request.wasBlocked()) {
+            var reason = WebInspector.UIString("other");
+            switch (this._request.blockedReason()) {
+            case NetworkAgent.BlockedReason.Csp:
+                reason = WebInspector.UIString("csp");
+                break;
+            case NetworkAgent.BlockedReason.MixedContent:
+                reason = WebInspector.UIString("mixed-content");
+                break;
+            case NetworkAgent.BlockedReason.Origin:
+                reason = WebInspector.UIString("origin");
+                break;
+            case NetworkAgent.BlockedReason.Inspector:
+                reason = WebInspector.UIString("devtools");
+                break;
+            case NetworkAgent.BlockedReason.Other:
+                reason = WebInspector.UIString("other");
+                break;
+            }
+            cell.setTextAndTitle(WebInspector.UIString("(blocked:%s)", reason));
         } else if (this._request.finished) {
             cell.setTextAndTitle(WebInspector.UIString("Finished"));
         } else {
@@ -292,15 +324,7 @@ WebInspector.NetworkDataGridNode.prototype = {
      */
     _renderTypeCell: function(cell)
     {
-        var mimeType = this._request.mimeType || this._request.requestContentType() || "";
-        var resourceType = this._request.resourceType();
-        var simpleType = resourceType.name();
-
-        if (resourceType == WebInspector.resourceTypes.Other
-            || resourceType == WebInspector.resourceTypes.Image)
-            simpleType = mimeType.replace(/^(application|image)\//, "");
-
-        cell.setTextAndTitle(simpleType);
+        cell.setTextAndTitle(this.displayType());
     },
 
     /**
@@ -312,11 +336,13 @@ WebInspector.NetworkDataGridNode.prototype = {
         var request = this._request;
         var initiator = request.initiatorInfo();
 
+        if (request.timing && request.timing.pushStart)
+            cell.appendChild(createTextNode(WebInspector.UIString("Push / ")));
         switch (initiator.type) {
         case WebInspector.NetworkRequest.InitiatorType.Parser:
             cell.title = initiator.url + ":" + initiator.lineNumber;
             var uiSourceCode = WebInspector.networkMapping.uiSourceCodeForURLForAnyTarget(initiator.url);
-            cell.appendChild(WebInspector.linkifyResourceAsNode(initiator.url, initiator.lineNumber - 1, undefined, undefined, uiSourceCode ? uiSourceCode.displayName() : undefined));
+            cell.appendChild(WebInspector.linkifyResourceAsNode(initiator.url, initiator.lineNumber - 1, initiator.columnNumber - 1, undefined, undefined, uiSourceCode ? uiSourceCode.displayName() : undefined));
             this._appendSubtitle(cell, WebInspector.UIString("Parser"));
             break;
 
@@ -330,7 +356,7 @@ WebInspector.NetworkDataGridNode.prototype = {
 
         case WebInspector.NetworkRequest.InitiatorType.Script:
             if (!this._linkifiedInitiatorAnchor) {
-                this._linkifiedInitiatorAnchor = this._parentView.linkifier.linkifyScriptLocation(request.target(), null, initiator.url, initiator.lineNumber - 1, initiator.columnNumber - 1);
+                this._linkifiedInitiatorAnchor = this._parentView.linkifier.linkifyScriptLocation(request.target(), initiator.scriptId, initiator.url, initiator.lineNumber - 1, initiator.columnNumber - 1);
                 this._linkifiedInitiatorAnchor.title = "";
             }
             cell.appendChild(this._linkifiedInitiatorAnchor);
@@ -340,9 +366,9 @@ WebInspector.NetworkDataGridNode.prototype = {
             break;
 
         default:
-            cell.title = "";
+            cell.title = WebInspector.UIString("Other");
             cell.classList.add("network-dim-cell");
-            cell.setTextAndTitle(WebInspector.UIString("Other"));
+            cell.appendChild(createTextNode(WebInspector.UIString("Other")));
         }
     },
 
@@ -403,7 +429,7 @@ WebInspector.NetworkDataGridNode.prototype = {
     _updateTimingGraph: function()
     {
         var calculator = this._parentView.calculator();
-        var timeRanges = WebInspector.RequestTimingView.calculateRequestTimeRanges(this._request);
+        var timeRanges = WebInspector.RequestTimingView.calculateRequestTimeRanges(this._request, calculator.minimumBoundary());
         var right = timeRanges[0].end;
 
         var container = this._barAreaElement;
@@ -502,7 +528,7 @@ WebInspector.NetworkDataGridNode.prototype = {
         if (labelAfter && (graphElementOffsetWidth * ((100 - this._percentages.end) / 100)) < (labelRightElementOffsetWidth + 10))
             var rightHidden = true;
 
-        if (barLeftElementOffsetWidth == barRightElementOffsetWidth) {
+        if (barLeftElementOffsetWidth === barRightElementOffsetWidth) {
             // The left/right label data are the same, so a before/after label can be replaced by an on-bar label.
             if (labelBefore && !labelAfter)
                 leftHidden = true;
@@ -585,6 +611,23 @@ WebInspector.NetworkDataGridNode.SizeComparator = function(a, b)
  * @param {!WebInspector.NetworkDataGridNode} b
  * @return {number}
  */
+WebInspector.NetworkDataGridNode.TypeComparator = function(a, b)
+{
+    var aSimpleType = a.displayType();
+    var bSimpleType = b.displayType();
+
+    if (aSimpleType > bSimpleType)
+        return 1;
+    if (bSimpleType > aSimpleType)
+        return -1;
+    return a._request.indentityCompare(b._request);
+}
+
+/**
+ * @param {!WebInspector.NetworkDataGridNode} a
+ * @param {!WebInspector.NetworkDataGridNode} b
+ * @return {number}
+ */
 WebInspector.NetworkDataGridNode.InitiatorComparator = function(a, b)
 {
     var aInitiator = a._request.initiatorInfo();
@@ -643,19 +686,84 @@ WebInspector.NetworkDataGridNode.ResponseCookiesCountComparator = function(a, b)
 }
 
 /**
- * @param {string} propertyName
- * @param {boolean} revert
  * @param {!WebInspector.NetworkDataGridNode} a
  * @param {!WebInspector.NetworkDataGridNode} b
  * @return {number}
  */
-WebInspector.NetworkDataGridNode.RequestPropertyComparator = function(propertyName, revert, a, b)
+WebInspector.NetworkDataGridNode.InitialPriorityComparator = function(a, b)
+{
+    var priorityMap = WebInspector.NetworkDataGridNode._symbolicToNumericPriority;
+    if (!priorityMap) {
+        WebInspector.NetworkDataGridNode._symbolicToNumericPriority = new Map();
+        priorityMap = WebInspector.NetworkDataGridNode._symbolicToNumericPriority;
+        priorityMap.set(NetworkAgent.ResourcePriority.VeryLow, 1);
+        priorityMap.set(NetworkAgent.ResourcePriority.Low, 2);
+        priorityMap.set(NetworkAgent.ResourcePriority.Medium, 3);
+        priorityMap.set(NetworkAgent.ResourcePriority.High, 4);
+        priorityMap.set(NetworkAgent.ResourcePriority.VeryHigh, 5);
+    }
+    var aScore = priorityMap.get(a._request.initialPriority()) || 0;
+    var bScore = priorityMap.get(b._request.initialPriority()) || 0;
+
+    return aScore - bScore || a._request.indentityCompare(b._request);
+}
+
+/**
+ * @param {string} propertyName
+ * @param {!WebInspector.NetworkDataGridNode} a
+ * @param {!WebInspector.NetworkDataGridNode} b
+ * @return {number}
+ */
+WebInspector.NetworkDataGridNode.RequestPropertyComparator = function(propertyName, a, b)
 {
     var aValue = a._request[propertyName];
     var bValue = b._request[propertyName];
-    if (aValue > bValue)
-        return revert ? -1 : 1;
-    if (bValue > aValue)
-        return revert ? 1 : -1;
-    return a._request.indentityCompare(b._request);
+    if (aValue === bValue)
+        return a._request.indentityCompare(b._request);
+    return aValue > bValue ? 1 : -1;
+}
+
+/**
+ * @param {string} propertyName
+ * @param {!WebInspector.NetworkDataGridNode} a
+ * @param {!WebInspector.NetworkDataGridNode} b
+ * @return {number}
+ */
+WebInspector.NetworkDataGridNode.ResponseHeaderStringComparator = function(propertyName, a, b)
+{
+    var aValue = String(a._request.responseHeaderValue(propertyName) || "");
+    var bValue = String(b._request.responseHeaderValue(propertyName) || "");
+    return aValue.localeCompare(bValue) || a._request.indentityCompare(b._request);
+}
+
+/**
+ * @param {string} propertyName
+ * @param {!WebInspector.NetworkDataGridNode} a
+ * @param {!WebInspector.NetworkDataGridNode} b
+ * @return {number}
+ */
+WebInspector.NetworkDataGridNode.ResponseHeaderNumberComparator = function(propertyName, a, b)
+{
+    var aValue = (a._request.responseHeaderValue(propertyName) !== undefined) ? parseFloat(a._request.responseHeaderValue(propertyName)) : -Infinity;
+    var bValue = (b._request.responseHeaderValue(propertyName) !== undefined) ? parseFloat(b._request.responseHeaderValue(propertyName)) : -Infinity;
+    if (aValue === bValue)
+        return a._request.indentityCompare(b._request);
+    return aValue > bValue ? 1 : -1;
+}
+
+/**
+ * @param {string} propertyName
+ * @param {!WebInspector.NetworkDataGridNode} a
+ * @param {!WebInspector.NetworkDataGridNode} b
+ * @return {number}
+ */
+WebInspector.NetworkDataGridNode.ResponseHeaderDateComparator = function(propertyName, a, b)
+{
+    var aHeader = a._request.responseHeaderValue(propertyName);
+    var bHeader = b._request.responseHeaderValue(propertyName);
+    var aValue = aHeader ? new Date(aHeader).getTime() : -Infinity;
+    var bValue = bHeader ? new Date(bHeader).getTime() : -Infinity;
+    if (aValue === bValue)
+        return a._request.indentityCompare(b._request);
+    return aValue > bValue ? 1 : -1;
 }

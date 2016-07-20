@@ -16,6 +16,10 @@
     flex: 0 0 44px;
 }
 
+.search-toolbar {
+    margin-top: -2px;
+}
+
 .search-replace {
     -webkit-appearance: none;
     border: 0;
@@ -68,6 +72,7 @@
     background-image: linear-gradient(rgb(241, 241, 241), rgb(220, 220, 220));
     width: 100%;
     height: 20px;
+    white-space: nowrap;
 }
 
 .toolbar-search button.search-action-button:active {
@@ -101,6 +106,10 @@
 .toolbar-search-navigation.toolbar-search-navigation-prev {
     background-image: url(Images/searchPrev.png);
     border-left: 1px solid rgb(163, 163, 163);
+}
+
+:host-context(.-theme-with-dark-background) .toolbar-search-navigation {
+    -webkit-filter: invert(90%);
 }
 
 .toolbar-search-navigation.toolbar-search-navigation-prev.enabled:active {

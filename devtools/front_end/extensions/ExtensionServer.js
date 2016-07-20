@@ -267,7 +267,9 @@ WebInspector.ExtensionServer.prototype = {
             return this._status.E_EXISTS(id);
 
         var page = this._expandResourcePath(port._extensionOrigin, message.page);
-        var panelDescriptor = new WebInspector.ExtensionServerPanelDescriptor(id, message.title, new WebInspector.ExtensionPanel(this, id, page));
+        var persistentId = port._extensionOrigin + message.title;
+        persistentId = persistentId.replace(/\s/g, "");
+        var panelDescriptor = new WebInspector.ExtensionServerPanelDescriptor(persistentId, message.title, new WebInspector.ExtensionPanel(this, persistentId, id, page));
         this._clientObjects[id] = panelDescriptor;
         WebInspector.inspectorView.addPanel(panelDescriptor);
         return this._status.OK();
@@ -275,7 +277,11 @@ WebInspector.ExtensionServer.prototype = {
 
     _onShowPanel: function(message)
     {
-        WebInspector.inspectorView.showPanel(message.id);
+        var panelName = message.id;
+        var panelDescriptor = this._clientObjects[message.id];
+        if (panelDescriptor && panelDescriptor instanceof WebInspector.ExtensionServerPanelDescriptor)
+            panelName = panelDescriptor.name();
+        WebInspector.inspectorView.showPanel(panelName);
     },
 
     _onCreateToolbarButton: function(message, port)
@@ -375,7 +381,7 @@ WebInspector.ExtensionServer.prototype = {
 
         var resource = WebInspector.resourceForURL(message.url);
         if (resource) {
-            WebInspector.Revealer.reveal(resource, message.lineNumber);
+            WebInspector.Revealer.reveal(resource);
             return this._status.OK();
         }
 
@@ -400,7 +406,7 @@ WebInspector.ExtensionServer.prototype = {
     _handleOpenURL: function(port, details)
     {
         var url = /** @type {string} */ (details.url);
-        var contentProvider = WebInspector.workspace.uiSourceCodeForOriginURL(url) || WebInspector.resourceForURL(url);
+        var contentProvider = WebInspector.workspace.uiSourceCodeForURL(url) || WebInspector.resourceForURL(url);
         if (!contentProvider)
             return false;
 
@@ -423,9 +429,7 @@ WebInspector.ExtensionServer.prototype = {
         var injectedScript;
         if (options.injectedScript)
             injectedScript = "(function(){" + options.injectedScript + "})()";
-        // Reload main frame.
-        var target = WebInspector.targetManager.mainTarget();
-        target.resourceTreeModel.reloadPage(!!options.ignoreCache, injectedScript);
+        WebInspector.targetManager.reloadPage(!!options.ignoreCache, injectedScript);
         return this._status.OK();
     },
 
@@ -520,7 +524,7 @@ WebInspector.ExtensionServer.prototype = {
             this._dispatchCallback(message.requestId, port, response);
         }
 
-        contentProvider.requestContent(onContentAvailable.bind(this));
+        contentProvider.requestContent().then(onContentAvailable.bind(this));
     },
 
     _onGetRequestContent: function(message, port)
@@ -534,7 +538,7 @@ WebInspector.ExtensionServer.prototype = {
     _onGetResourceContent: function(message, port)
     {
         var url = /** @type {string} */ (message.url);
-        var contentProvider = WebInspector.workspace.uiSourceCodeForOriginURL(url) || WebInspector.resourceForURL(url);
+        var contentProvider = WebInspector.workspace.uiSourceCodeForURL(url) || WebInspector.resourceForURL(url);
         if (!contentProvider)
             return this._status.E_NOTFOUND(url);
         this._getResourceContent(contentProvider, message, port);
@@ -553,8 +557,8 @@ WebInspector.ExtensionServer.prototype = {
         }
 
         var url = /** @type {string} */ (message.url);
-        var uiSourceCode = WebInspector.workspace.uiSourceCodeForOriginURL(url);
-        if (!uiSourceCode) {
+        var uiSourceCode = WebInspector.workspace.uiSourceCodeForURL(url);
+        if (!uiSourceCode || !uiSourceCode.contentType().isDocumentOrScriptOrStyleSheet()) {
             var resource = WebInspector.ResourceTreeModel.resourceForURL(url);
             if (!resource)
                 return this._status.E_NOTFOUND(url);
@@ -627,7 +631,6 @@ WebInspector.ExtensionServer.prototype = {
 
     _onForwardKeyboardEvent: function(message)
     {
-        const Esc = "U+001B";
         message.entries.forEach(handleEventEntry);
 
         /**
@@ -636,12 +639,14 @@ WebInspector.ExtensionServer.prototype = {
          */
         function handleEventEntry(entry)
         {
-            if (!entry.ctrlKey && !entry.altKey && !entry.metaKey && !/^F\d+$/.test(entry.keyIdentifier) && entry.keyIdentifier !== Esc)
+            if (!entry.ctrlKey && !entry.altKey && !entry.metaKey && !/^F\d+$/.test(entry.key) && entry.key !== "Escape")
                 return;
             // Fool around closure compiler -- it has its own notion of both KeyboardEvent constructor
             // and initKeyboardEvent methods and overriding these in externs.js does not have effect.
             var event = new window.KeyboardEvent(entry.eventType, {
-                keyIdentifier: entry.keyIdentifier,
+                key: entry.key,
+                code: entry.code,
+                keyCode: entry.keyCode,
                 location: entry.location,
                 ctrlKey: entry.ctrlKey,
                 altKey: entry.altKey,
@@ -657,9 +662,8 @@ WebInspector.ExtensionServer.prototype = {
             var keyCode = entry.keyCode;
             if (!keyCode) {
                 // This is required only for synthetic events (e.g. dispatched in tests).
-                var match = entry.keyIdentifier.match(/^U\+([\dA-Fa-f]+)$/);
-                if (match)
-                    keyCode = parseInt(match[1], 16);
+                if (entry.key === "Escape")
+                    keyCode = 27;
             }
             return keyCode || 0;
         }
@@ -770,7 +774,7 @@ WebInspector.ExtensionServer.prototype = {
             var extensionOrigin = originMatch[1];
             if (!this._registeredExtensions[extensionOrigin]) {
                 // See ExtensionAPI.js for details.
-                InspectorFrontendHost.setInjectedScriptForOrigin(extensionOrigin, buildExtensionAPIInjectedScript(extensionInfo, this._inspectedTabId));
+                InspectorFrontendHost.setInjectedScriptForOrigin(extensionOrigin, buildExtensionAPIInjectedScript(extensionInfo, this._inspectedTabId, WebInspector.themeSupport.themeName()));
                 this._registeredExtensions[extensionOrigin] = { name: name };
             }
             var iframe = createElement("iframe");
@@ -861,7 +865,7 @@ WebInspector.ExtensionServer.prototype = {
          */
         function addFirstEventListener()
         {
-            WebInspector.workspace.addEventListener(WebInspector.Workspace.Events.UISourceCodeContentCommitted, handler, this);
+            WebInspector.workspace.addEventListener(WebInspector.Workspace.Events.WorkingCopyCommittedByUser, handler, this);
             WebInspector.workspace.setHasResourceContentTrackingExtensions(true);
         }
 
@@ -871,7 +875,7 @@ WebInspector.ExtensionServer.prototype = {
         function removeLastEventListener()
         {
             WebInspector.workspace.setHasResourceContentTrackingExtensions(false);
-            WebInspector.workspace.removeEventListener(WebInspector.Workspace.Events.UISourceCodeContentCommitted, handler, this);
+            WebInspector.workspace.removeEventListener(WebInspector.Workspace.Events.WorkingCopyCommittedByUser, handler, this);
         }
 
         this._registerSubscriptionHandler(WebInspector.extensionAPI.Events.ResourceContentCommitted,
@@ -955,7 +959,7 @@ WebInspector.ExtensionServer.prototype = {
             if (contextSecurityOrigin) {
                 for (var i = 0; i < executionContexts.length; ++i) {
                     var executionContext = executionContexts[i];
-                    if (executionContext.frameId === frame.id && executionContext.origin === contextSecurityOrigin && !executionContext.isMainWorldContext)
+                    if (executionContext.frameId === frame.id && executionContext.origin === contextSecurityOrigin && !executionContext.isDefault)
                         context = executionContext;
 
                 }
@@ -966,7 +970,7 @@ WebInspector.ExtensionServer.prototype = {
             } else {
                 for (var i = 0; i < executionContexts.length; ++i) {
                     var executionContext = executionContexts[i];
-                    if (executionContext.frameId === frame.id && executionContext.isMainWorldContext)
+                    if (executionContext.frameId === frame.id && executionContext.isDefault)
                         context = executionContext;
 
                 }
@@ -980,7 +984,7 @@ WebInspector.ExtensionServer.prototype = {
         if (!target)
             return;
 
-        target.runtimeAgent().evaluate(expression, "extension", exposeCommandLineAPI, true, contextId, returnByValue, false, onEvalute);
+        target.runtimeAgent().evaluate(expression, "extension", exposeCommandLineAPI, true, contextId, returnByValue, false, false, onEvalute);
 
         /**
          * @param {?Protocol.Error} error
@@ -1081,3 +1085,6 @@ WebInspector.ExtensionStatus.Record;
 
 WebInspector.extensionAPI = {};
 defineCommonExtensionSymbols(WebInspector.extensionAPI);
+
+/** @type {!WebInspector.ExtensionServer} */
+WebInspector.extensionServer;

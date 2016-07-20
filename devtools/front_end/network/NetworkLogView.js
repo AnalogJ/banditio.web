@@ -30,9 +30,9 @@
 
 /**
  * @constructor
+ * @extends {WebInspector.VBox}
  * @implements {WebInspector.Searchable}
  * @implements {WebInspector.TargetManager.Observer}
- * @extends {WebInspector.VBox}
  * @param {!WebInspector.FilterBar} filterBar
  * @param {!Element} progressBarContainer
  * @param {!WebInspector.Setting} networkLogLargeRowsSetting
@@ -42,7 +42,6 @@ WebInspector.NetworkLogView = function(filterBar, progressBarContainer, networkL
     WebInspector.VBox.call(this);
     this.setMinimumSize(50, 64);
     this.registerRequiredCSS("network/networkLogView.css");
-    this.registerRequiredCSS("ui/filter.css");
 
     this._networkHideDataURLSetting = WebInspector.settings.createSetting("networkHideDataURL", false);
     this._networkResourceTypeFiltersSetting = WebInspector.settings.createSetting("networkResourceTypeFilters", {});
@@ -52,13 +51,7 @@ WebInspector.NetworkLogView = function(filterBar, progressBarContainer, networkL
     this._progressBarContainer = progressBarContainer;
     this._networkLogLargeRowsSetting = networkLogLargeRowsSetting;
 
-    var defaultColumnsVisibility = WebInspector.NetworkLogView._defaultColumnsVisibility;
-    this._columnsVisibilitySetting = WebInspector.settings.createSetting("networkLogColumnsVisibility", defaultColumnsVisibility);
-    var savedColumnsVisibility = this._columnsVisibilitySetting.get();
-    var columnsVisibility = {};
-    for (var columnId in defaultColumnsVisibility)
-        columnsVisibility[columnId] = savedColumnsVisibility.hasOwnProperty(columnId) ? savedColumnsVisibility[columnId] : defaultColumnsVisibility[columnId];
-    this._columnsVisibilitySetting.set(columnsVisibility);
+    this._columns = new WebInspector.NetworkLogViewColumns(this, networkLogLargeRowsSetting);
 
     /** @type {!Map.<string, !WebInspector.NetworkDataGridNode>} */
     this._nodesByRequestId = new Map();
@@ -69,8 +62,6 @@ WebInspector.NetworkLogView = function(filterBar, progressBarContainer, networkL
     /** @type {number} */
     this._mainRequestDOMContentLoadedTime = -1;
     this._matchedRequestCount = 0;
-    /** @type {!Array<{time: number, element: !Element}>} */
-    this._eventDividers = [];
     this._highlightedSubstringChanges = [];
 
     /** @type {!Array.<!WebInspector.NetworkLogView.Filter>} */
@@ -82,11 +73,8 @@ WebInspector.NetworkLogView = function(filterBar, progressBarContainer, networkL
     this._currentMatchedRequestIndex = -1;
 
     /** @type {!WebInspector.Linkifier} */
-    this._popupLinkifier = new WebInspector.Linkifier();
-    /** @type {!WebInspector.Linkifier} */
     this.linkifier = new WebInspector.Linkifier();
 
-    this._gridMode = true;
     this._recording = false;
     this._preserveLog = false;
 
@@ -104,21 +92,13 @@ WebInspector.NetworkLogView = function(filterBar, progressBarContainer, networkL
     WebInspector.targetManager.addModelListener(WebInspector.NetworkManager, WebInspector.NetworkManager.EventTypes.RequestStarted, this._onRequestStarted, this);
     WebInspector.targetManager.addModelListener(WebInspector.NetworkManager, WebInspector.NetworkManager.EventTypes.RequestUpdated, this._onRequestUpdated, this);
     WebInspector.targetManager.addModelListener(WebInspector.NetworkManager, WebInspector.NetworkManager.EventTypes.RequestFinished, this._onRequestUpdated, this);
-
-    WebInspector.targetManager.addModelListener(WebInspector.ResourceTreeModel, WebInspector.ResourceTreeModel.EventTypes.MainFrameNavigated, this._mainFrameNavigated, this);
-    WebInspector.targetManager.addModelListener(WebInspector.ResourceTreeModel, WebInspector.ResourceTreeModel.EventTypes.Load, this._loadEventFired, this);
-    WebInspector.targetManager.addModelListener(WebInspector.ResourceTreeModel, WebInspector.ResourceTreeModel.EventTypes.DOMContentLoaded, this._domContentLoadedEventFired, this);
 }
 
 WebInspector.NetworkLogView._isFilteredOutSymbol = Symbol("isFilteredOut");
 WebInspector.NetworkLogView._isMatchingSearchQuerySymbol = Symbol("isMatchingSearchQuery");
 
 WebInspector.NetworkLogView.HTTPSchemas = {"http": true, "https": true, "ws": true, "wss": true};
-WebInspector.NetworkLogView._responseHeaderColumns = ["Cache-Control", "Connection", "Content-Encoding", "Content-Length", "ETag", "Keep-Alive", "Last-Modified", "Server", "Vary"];
-WebInspector.NetworkLogView._defaultColumnsVisibility = {
-    method: false, status: true, protocol: false, scheme: false, domain: false, remoteAddress: false, type: true, initiator: true, cookies: false, setCookies: false, size: true, time: true, connectionId: false,
-    "Cache-Control": false, "Connection": false, "Content-Encoding": false, "Content-Length": false, "ETag": false, "Keep-Alive": false, "Last-Modified": false, "Server": false, "Vary": false
-};
+
 WebInspector.NetworkLogView._defaultRefreshDelay = 200;
 
 WebInspector.NetworkLogView._waterfallMinOvertime = 1;
@@ -132,12 +112,21 @@ WebInspector.NetworkLogView.FilterType = {
     LargerThan: "larger-than",
     Method: "method",
     MimeType: "mime-type",
+    MixedContent: "mixed-content",
     Scheme: "scheme",
     SetCookieDomain: "set-cookie-domain",
     SetCookieName: "set-cookie-name",
     SetCookieValue: "set-cookie-value",
     StatusCode: "status-code"
 };
+
+/** @enum {string} */
+WebInspector.NetworkLogView.MixedContentFilterValues = {
+    All: "all",
+    Displayed: "displayed",
+    Blocked: "blocked",
+    BlockOverridden: "block-overridden"
+}
 
 /** @enum {string} */
 WebInspector.NetworkLogView.IsFilterType = {
@@ -147,36 +136,6 @@ WebInspector.NetworkLogView.IsFilterType = {
 /** @type {!Array.<string>} */
 WebInspector.NetworkLogView._searchKeys = Object.values(WebInspector.NetworkLogView.FilterType);
 
-/** @type {!Object.<string, string>} */
-WebInspector.NetworkLogView._columnTitles = {
-    "name": WebInspector.UIString("Name"),
-    "method": WebInspector.UIString("Method"),
-    "status": WebInspector.UIString("Status"),
-    "protocol": WebInspector.UIString("Protocol"),
-    "scheme": WebInspector.UIString("Scheme"),
-    "domain": WebInspector.UIString("Domain"),
-    "remoteAddress": WebInspector.UIString("Remote Address"),
-    "type": WebInspector.UIString("Type"),
-    "initiator": WebInspector.UIString("Initiator"),
-    "cookies": WebInspector.UIString("Cookies"),
-    "setCookies": WebInspector.UIString("Set-Cookies"),
-    "size": WebInspector.UIString("Size"),
-    "time": WebInspector.UIString("Time"),
-    "connectionId": WebInspector.UIString("Connection Id"),
-    "timeline": WebInspector.UIString("Timeline"),
-
-    // Response header columns
-    "Cache-Control": WebInspector.UIString("Cache-Control"),
-    "Connection": WebInspector.UIString("Connection"),
-    "Content-Encoding": WebInspector.UIString("Content-Encoding"),
-    "Content-Length": WebInspector.UIString("Content-Length"),
-    "ETag": WebInspector.UIString("ETag"),
-    "Keep-Alive": WebInspector.UIString("Keep-Alive"),
-    "Last-Modified": WebInspector.UIString("Last-Modified"),
-    "Server": WebInspector.UIString("Server"),
-    "Vary": WebInspector.UIString("Vary")
-};
-
 WebInspector.NetworkLogView.prototype = {
     /**
      * @param {boolean} recording
@@ -184,6 +143,7 @@ WebInspector.NetworkLogView.prototype = {
     setRecording: function(recording)
     {
         this._recording = recording;
+        this._updateSummaryBar();
     },
 
     /**
@@ -200,7 +160,14 @@ WebInspector.NetworkLogView.prototype = {
      */
     targetAdded: function(target)
     {
-        target.networkLog.requests().forEach(this._appendRequest.bind(this));
+        if (!target.parentTarget()) {
+            target.resourceTreeModel.addEventListener(WebInspector.ResourceTreeModel.EventTypes.MainFrameNavigated, this._mainFrameNavigated, this);
+            target.resourceTreeModel.addEventListener(WebInspector.ResourceTreeModel.EventTypes.Load, this._loadEventFired, this);
+            target.resourceTreeModel.addEventListener(WebInspector.ResourceTreeModel.EventTypes.DOMContentLoaded, this._domContentLoadedEventFired, this);
+        }
+        var networkLog = WebInspector.NetworkLog.fromTarget(target);
+        if (networkLog)
+            networkLog.requests().forEach(this._appendRequest.bind(this));
     },
 
     /**
@@ -209,6 +176,11 @@ WebInspector.NetworkLogView.prototype = {
      */
     targetRemoved: function(target)
     {
+        if (!target.parentTarget()) {
+            target.resourceTreeModel.removeEventListener(WebInspector.ResourceTreeModel.EventTypes.MainFrameNavigated, this._mainFrameNavigated, this);
+            target.resourceTreeModel.removeEventListener(WebInspector.ResourceTreeModel.EventTypes.Load, this._loadEventFired, this);
+            target.resourceTreeModel.removeEventListener(WebInspector.ResourceTreeModel.EventTypes.DOMContentLoaded, this._domContentLoadedEventFired, this);
+        }
     },
 
     /**
@@ -224,7 +196,7 @@ WebInspector.NetworkLogView.prototype = {
             this._timeFilter = WebInspector.NetworkLogView._requestTimeFilter.bind(null, start, end);
             this._timeCalculator.setWindow(new WebInspector.NetworkTimeBoundary(start, end));
         }
-        this._updateDividersIfNeeded();
+        this._columns.updateDividersIfNeeded();
         this._filterRequests();
     },
 
@@ -236,7 +208,7 @@ WebInspector.NetworkLogView.prototype = {
 
     _addFilters: function()
     {
-        this._textFilterUI = new WebInspector.TextFilterUI();
+        this._textFilterUI = new WebInspector.TextFilterUI(true);
         this._textFilterUI.addEventListener(WebInspector.FilterUI.Events.FilterChanged, this._filterChanged, this);
         this._filterBar.addFilter(this._textFilterUI);
 
@@ -270,7 +242,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     _filterChanged: function(event)
     {
-        this._removeAllNodeHighlights();
+        this.removeAllNodeHighlights();
         this._parseFilterQuery(this._textFilterUI.value());
         this._filterRequests();
     },
@@ -279,16 +251,43 @@ WebInspector.NetworkLogView.prototype = {
     {
         this.element.id = "network-container";
 
-        this._createSortingFunctions();
-        this._createCalculators();
+        /** @type {!WebInspector.NetworkTransferTimeCalculator} */
+        this._timeCalculator = new WebInspector.NetworkTransferTimeCalculator();
+        /** @type {!WebInspector.NetworkTransferDurationCalculator} */
+        this._durationCalculator = new WebInspector.NetworkTransferDurationCalculator();
+        this._calculator = this._timeCalculator;
+
         this._createTable();
-        this._createTimelineGrid();
         this._summaryBarElement = this.element.createChild("div", "network-summary-bar");
 
         this._updateRowsSize();
+    },
 
-        this._popoverHelper = new WebInspector.PopoverHelper(this.element, this._getPopoverAnchor.bind(this), this._showPopover.bind(this), this._onHidePopover.bind(this));
-        this.switchViewMode(true);
+    _showRecordingHint: function()
+    {
+        this._hideRecordingHint();
+        this._recordingHint = this.element.createChild("div", "network-status-pane fill");
+        var hintText = this._recordingHint.createChild("div", "recording-hint");
+        var reloadShortcutNode = this._recordingHint.createChild("b");
+        reloadShortcutNode.textContent = WebInspector.shortcutRegistry.shortcutDescriptorsForAction("main.reload")[0].name;
+
+        if (this._recording) {
+            var recordingText = hintText.createChild("span");
+            recordingText.textContent = WebInspector.UIString("Recording network activity\u2026");
+            hintText.createChild("br");
+            hintText.appendChild(WebInspector.formatLocalized("Perform a request or hit %s to record the reload.", [reloadShortcutNode]));
+        } else {
+            var recordNode = hintText.createChild("b");
+            recordNode.textContent = WebInspector.shortcutRegistry.shortcutTitleForAction("network.toggle-recording");
+            hintText.appendChild(WebInspector.formatLocalized("Record (%s) or reload (%s) to display network activity.", [recordNode, reloadShortcutNode]));
+        }
+    },
+
+    _hideRecordingHint: function()
+    {
+        if (this._recordingHint)
+            this._recordingHint.remove();
+        delete this._recordingHint;
     },
 
     /**
@@ -302,138 +301,10 @@ WebInspector.NetworkLogView.prototype = {
         return [this._dataGrid.scrollContainer];
     },
 
-    _createTimelineGrid: function()
-    {
-        this._timelineGrid = new WebInspector.TimelineGrid();
-        this._timelineGrid.element.classList.add("network-timeline-grid");
-        this._dataGrid.element.appendChild(this._timelineGrid.element);
-    },
-
     _createTable: function()
     {
-        var columns = [];
-        columns.push({
-            id: "name",
-            titleDOMFragment: this._makeHeaderFragment(WebInspector.UIString("Name"), WebInspector.UIString("Path")),
-            title: WebInspector.NetworkLogView._columnTitles["name"],
-            weight: 20
-        });
-
-        columns.push({
-            id: "method",
-            title: WebInspector.NetworkLogView._columnTitles["method"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "status",
-            titleDOMFragment: this._makeHeaderFragment(WebInspector.UIString("Status"), WebInspector.UIString("Text")),
-            title: WebInspector.NetworkLogView._columnTitles["status"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "protocol",
-            title: WebInspector.NetworkLogView._columnTitles["protocol"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "scheme",
-            title: WebInspector.NetworkLogView._columnTitles["scheme"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "domain",
-            title: WebInspector.NetworkLogView._columnTitles["domain"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "remoteAddress",
-            title: WebInspector.NetworkLogView._columnTitles["remoteAddress"],
-            weight: 10,
-            align: WebInspector.DataGrid.Align.Right
-        });
-
-        columns.push({
-            id: "type",
-            title: WebInspector.NetworkLogView._columnTitles["type"],
-            weight: 6
-        });
-
-        columns.push({
-            id: "initiator",
-            title: WebInspector.NetworkLogView._columnTitles["initiator"],
-            weight: 10
-        });
-
-        columns.push({
-            id: "cookies",
-            title: WebInspector.NetworkLogView._columnTitles["cookies"],
-            weight: 6,
-            align: WebInspector.DataGrid.Align.Right
-        });
-
-        columns.push({
-            id: "setCookies",
-            title: WebInspector.NetworkLogView._columnTitles["setCookies"],
-            weight: 6,
-            align: WebInspector.DataGrid.Align.Right
-        });
-
-        columns.push({
-            id: "size",
-            titleDOMFragment: this._makeHeaderFragment(WebInspector.UIString("Size"), WebInspector.UIString("Content")),
-            title: WebInspector.NetworkLogView._columnTitles["size"],
-            weight: 6,
-            align: WebInspector.DataGrid.Align.Right
-        });
-
-        columns.push({
-            id: "time",
-            titleDOMFragment: this._makeHeaderFragment(WebInspector.UIString("Time"), WebInspector.UIString("Latency")),
-            title: WebInspector.NetworkLogView._columnTitles["time"],
-            weight: 6,
-            align: WebInspector.DataGrid.Align.Right
-        });
-
-        columns.push({
-            id: "connectionId",
-            title: WebInspector.NetworkLogView._columnTitles["connectionId"],
-            weight: 6
-        });
-
-        var responseHeaderColumns = WebInspector.NetworkLogView._responseHeaderColumns;
-        for (var i = 0; i < responseHeaderColumns.length; ++i) {
-            var headerName = responseHeaderColumns[i];
-            var descriptor = {
-                id: headerName,
-                title: WebInspector.NetworkLogView._columnTitles[headerName],
-                weight: 6
-            };
-            if (headerName === "Content-Length")
-                descriptor.align = WebInspector.DataGrid.Align.Right;
-            columns.push(descriptor);
-        }
-
-        columns.push({
-            id: "timeline",
-            title: WebInspector.NetworkLogView._columnTitles["timeline"],
-            sortable: false,
-            weight: 40,
-            sort: WebInspector.DataGrid.Order.Ascending
-        });
-
-        for (var column of columns) {
-            column.sortable = column.id !== "timeline";
-            column.nonSelectable = column.id !== "name";
-        }
-
-        this._dataGrid = new WebInspector.SortableDataGrid(columns);
+        this._dataGrid = this._columns.createGrid(this._timeCalculator, this._durationCalculator);
         this._dataGrid.setStickToBottom(true);
-        this._updateColumns();
         this._dataGrid.setName("networkLog");
         this._dataGrid.setResizeMethod(WebInspector.DataGrid.ResizeMethod.Last);
         this._dataGrid.element.classList.add("network-log-grid");
@@ -441,14 +312,6 @@ WebInspector.NetworkLogView.prototype = {
         this._dataGrid.element.addEventListener("mousedown", this._dataGridMouseDown.bind(this), true);
         this._dataGrid.element.addEventListener("mousemove", this._dataGridMouseMove.bind(this), true);
         this._dataGrid.element.addEventListener("mouseleave", this._highlightInitiatorChain.bind(this, null), true);
-        this._dataGrid.show(this.element);
-
-        // Event listeners need to be added _after_ we attach to the document, so that owner document is properly update.
-        this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SortingChanged, this._sortItems, this);
-        this._dataGrid.addEventListener(WebInspector.DataGrid.Events.ColumnsResized, this._updateDividersIfNeeded, this);
-
-        this._patchTimelineHeader();
-        this._dataGrid.sortNodes(this._sortingFunctions.startTime, false);
     },
 
     /**
@@ -505,163 +368,15 @@ WebInspector.NetworkLogView.prototype = {
         }
     },
 
-    /**
-     * @param {string} title
-     * @param {string} subtitle
-     * @return {!DocumentFragment}
-     */
-    _makeHeaderFragment: function(title, subtitle)
-    {
-        var fragment = createDocumentFragment();
-        fragment.createTextChild(title);
-        var subtitleDiv = fragment.createChild("div", "network-header-subtitle");
-        subtitleDiv.createTextChild(subtitle);
-        return fragment;
-    },
-
-    _patchTimelineHeader: function()
-    {
-        var timelineSorting = createElement("select");
-
-        var option = createElement("option");
-        option.value = "startTime";
-        option.label = WebInspector.UIString("Timeline");
-        option.disabled = true;
-        timelineSorting.appendChild(option);
-
-        option = createElement("option");
-        option.value = "startTime";
-        option.label = WebInspector.UIString("Timeline \u2013 Start Time");
-        option.sortOrder = WebInspector.DataGrid.Order.Ascending;
-        timelineSorting.appendChild(option);
-
-        option = createElement("option");
-        option.value = "responseTime";
-        option.label = WebInspector.UIString("Timeline \u2013 Response Time");
-        option.sortOrder = WebInspector.DataGrid.Order.Ascending;
-        timelineSorting.appendChild(option);
-
-        option = createElement("option");
-        option.value = "endTime";
-        option.label = WebInspector.UIString("Timeline \u2013 End Time");
-        option.sortOrder = WebInspector.DataGrid.Order.Ascending;
-        timelineSorting.appendChild(option);
-
-        option = createElement("option");
-        option.value = "duration";
-        option.label = WebInspector.UIString("Timeline \u2013 Total Duration");
-        option.sortOrder = WebInspector.DataGrid.Order.Descending;
-        timelineSorting.appendChild(option);
-
-        option = createElement("option");
-        option.value = "latency";
-        option.label = WebInspector.UIString("Timeline \u2013 Latency");
-        option.sortOrder = WebInspector.DataGrid.Order.Descending;
-        timelineSorting.appendChild(option);
-
-        var header = this._dataGrid.headerTableHeader("timeline");
-        header.replaceChild(timelineSorting, header.firstChild);
-        header.createChild("div", "sort-order-icon-container").createChild("div", "sort-order-icon");
-
-        timelineSorting.selectedIndex = 1;
-        timelineSorting.addEventListener("click", function(event) { event.consume(); }, false);
-        timelineSorting.addEventListener("change", this._sortByTimeline.bind(this), false);
-        this._timelineSortSelector = timelineSorting;
-    },
-
-    _createSortingFunctions: function()
-    {
-        this._sortingFunctions = {};
-        this._sortingFunctions.name = WebInspector.NetworkDataGridNode.NameComparator;
-        this._sortingFunctions.method = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "method", false);
-        this._sortingFunctions.status = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "statusCode", false);
-        this._sortingFunctions.protocol = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "protocol", false);
-        this._sortingFunctions.scheme = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "scheme", false);
-        this._sortingFunctions.domain = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "domain", false);
-        this._sortingFunctions.remoteAddress = WebInspector.NetworkDataGridNode.RemoteAddressComparator;
-        this._sortingFunctions.type = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "mimeType", false);
-        this._sortingFunctions.initiator = WebInspector.NetworkDataGridNode.InitiatorComparator;
-        this._sortingFunctions.cookies = WebInspector.NetworkDataGridNode.RequestCookiesCountComparator;
-        this._sortingFunctions.setCookies = WebInspector.NetworkDataGridNode.ResponseCookiesCountComparator;
-        this._sortingFunctions.size = WebInspector.NetworkDataGridNode.SizeComparator;
-        this._sortingFunctions.time = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "duration", false);
-        this._sortingFunctions.connectionId = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "connectionId", false);
-        this._sortingFunctions.timeline = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "startTime", false);
-        this._sortingFunctions.startTime = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "startTime", false);
-        this._sortingFunctions.endTime = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "endTime", false);
-        this._sortingFunctions.responseTime = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "responseReceivedTime", false);
-        this._sortingFunctions.duration = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "duration", true);
-        this._sortingFunctions.latency = WebInspector.NetworkDataGridNode.RequestPropertyComparator.bind(null, "latency", true);
-    },
-
-    _createCalculators: function()
-    {
-        /** @type {!WebInspector.NetworkTransferTimeCalculator} */
-        this._timeCalculator = new WebInspector.NetworkTransferTimeCalculator();
-        /** @type {!WebInspector.NetworkTransferDurationCalculator} */
-        this._durationCalculator = new WebInspector.NetworkTransferDurationCalculator();
-
-        /** @type {!Object.<string, !WebInspector.NetworkTimeCalculator>} */
-        this._calculators = {};
-        this._calculators.timeline = this._timeCalculator;
-        this._calculators.startTime = this._timeCalculator;
-        this._calculators.endTime = this._timeCalculator;
-        this._calculators.responseTime = this._timeCalculator;
-        this._calculators.duration = this._durationCalculator;
-        this._calculators.latency = this._durationCalculator;
-
-        this._calculator = this._timeCalculator;
-    },
-
-    _sortItems: function()
-    {
-        this._removeAllNodeHighlights();
-        var columnIdentifier = this._dataGrid.sortColumnIdentifier();
-        if (columnIdentifier === "timeline") {
-            this._sortByTimeline();
-            return;
-        }
-        var sortingFunction = this._sortingFunctions[columnIdentifier];
-        if (!sortingFunction)
-            return;
-
-        this._dataGrid.sortNodes(sortingFunction, !this._dataGrid.isSortOrderAscending());
-        this._highlightNthMatchedRequestForSearch(this._updateMatchCountAndFindMatchIndex(this._currentMatchedRequestNode), false);
-        this._timelineSortSelector.selectedIndex = 0;
-    },
-
-    _sortByTimeline: function()
-    {
-        this._removeAllNodeHighlights();
-        var selectedIndex = this._timelineSortSelector.selectedIndex;
-        if (!selectedIndex)
-            selectedIndex = 1; // Sort by start time by default.
-        var selectedOption = this._timelineSortSelector[selectedIndex];
-        var value = selectedOption.value;
-
-        this._setCalculator(this._calculators[value]);
-        var sortingFunction = this._sortingFunctions[value];
-        this._dataGrid.sortNodes(sortingFunction);
-        this._highlightNthMatchedRequestForSearch(this._updateMatchCountAndFindMatchIndex(this._currentMatchedRequestNode), false);
-        this._dataGrid.markColumnAsSortedBy("timeline", selectedOption.sortOrder);
-    },
-
     _updateSummaryBar: function()
     {
         var requestsNumber = this._nodesByRequestId.size;
 
         if (!requestsNumber) {
-            if (this._summaryBarElement._isDisplayingWarning)
-                return;
-            this._summaryBarElement._isDisplayingWarning = true;
-            this._summaryBarElement.removeChildren();
-            this._summaryBarElement.createChild("label", "", "dt-icon-label").type = "warning-icon";
-            var text = WebInspector.UIString("No requests captured. Reload the page to see detailed information on the network activity.");
-            this._summaryBarElement.createTextChild(text);
-            this._summaryBarElement.title = text;
+            this._showRecordingHint();
             return;
         }
-        delete this._summaryBarElement._isDisplayingWarning;
+        this._hideRecordingHint();
 
         var transferSize = 0;
         var selectedRequestsNumber = 0;
@@ -708,7 +423,7 @@ WebInspector.NetworkLogView.prototype = {
             appendChunk(separator);
             appendChunk(WebInspector.UIString("%s transferred", Number.bytesToString(transferSize)));
         }
-        if (baseTime !== -1) {
+        if (baseTime !== -1 && maxTime !== -1) {
             appendChunk(separator);
             appendChunk(WebInspector.UIString("Finish: %s", Number.secondsToString(maxTime - baseTime)));
             if (this._mainRequestDOMContentLoadedTime !== -1 && this._mainRequestDOMContentLoadedTime > baseTime) {
@@ -725,7 +440,7 @@ WebInspector.NetworkLogView.prototype = {
         summaryBar.title = text;
     },
 
-    _scheduleRefresh: function()
+    scheduleRefresh: function()
     {
         if (this._needsRefresh)
             return;
@@ -736,38 +451,12 @@ WebInspector.NetworkLogView.prototype = {
             this._refreshTimeout = setTimeout(this.refresh.bind(this), WebInspector.NetworkLogView._defaultRefreshDelay);
     },
 
-    _updateDividersIfNeeded: function()
-    {
-        if (!this.isShowing()) {
-            this._scheduleRefresh();
-            return;
-        }
-
-        var timelineOffset = this._dataGrid.columnOffset("timeline");
-        // Position timline grid location.
-        if (timelineOffset)
-            this._timelineGrid.element.style.left = timelineOffset + "px";
-
-        var calculator = this.calculator();
-        calculator.setDisplayWindow(this._timelineGrid.dividersElement.clientWidth);
-        this._timelineGrid.updateDividers(calculator, 75);
-
-        if (calculator.startAtZero) {
-            // If our current sorting method starts at zero, that means it shows all
-            // requests starting at the same point, and so onLoad event and DOMContent
-            // event lines really wouldn't make much sense here, so don't render them.
-            return;
-        }
-
-        this._updateEventDividers();
-    },
-
     /**
      * @param {!Array<number>} times
      */
     addFilmStripFrames: function(times)
     {
-        this._addEventDividers(times, "network-frame-divider");
+        this._columns.addEventDividers(times, "network-frame-divider");
     },
 
     /**
@@ -783,33 +472,6 @@ WebInspector.NetworkLogView.prototype = {
     {
         for (var divider of this._eventDividers)
             divider.element.classList.toggle("network-frame-divider-selected", false);
-    },
-
-    /**
-     * @param {!Array<number>} times
-     * @param {string} className
-     */
-    _addEventDividers: function(times, className)
-    {
-        for (var i = 0; i < times.length; ++i) {
-            var element = createElementWithClass("div", "network-event-divider " + className);
-            this._timelineGrid.addEventDivider(element);
-            this._eventDividers.push({time: times[i], element: element});
-        }
-        // Update event dividers immediately
-        this._updateEventDividers();
-        // Schedule refresh in case dividers change the calculator span.
-        this._scheduleRefresh();
-    },
-
-    _updateEventDividers: function()
-    {
-        var calculator = this.calculator();
-        for (var divider of this._eventDividers) {
-            var timePercent = calculator.computePercentageFromEventTime(divider.time);
-            divider.element.classList.toggle("invisible", timePercent < 0);
-            divider.element.style.left = timePercent + "%";
-        }
     },
 
     _refreshIfNeeded: function()
@@ -845,7 +507,7 @@ WebInspector.NetworkLogView.prototype = {
     /**
      * @param {!WebInspector.NetworkTimeCalculator} x
      */
-    _setCalculator: function(x)
+    setCalculator: function(x)
     {
         if (!x || this._calculator === x)
             return;
@@ -854,9 +516,9 @@ WebInspector.NetworkLogView.prototype = {
         this._calculator.reset();
 
         if (this._calculator.startAtZero)
-            this._timelineGrid.hideEventDividers();
+            this._columns.hideEventDividers();
         else
-            this._timelineGrid.showEventDividers();
+            this._columns.showEventDividers();
 
         this._invalidateAllItems();
     },
@@ -872,7 +534,7 @@ WebInspector.NetworkLogView.prototype = {
         var data = /** @type {number} */ (event.data);
         if (data) {
             this._mainRequestLoadTime = data;
-            this._addEventDividers([data], "network-red-divider");
+            this._columns.addEventDividers([data], "network-red-divider");
         }
     },
 
@@ -886,7 +548,7 @@ WebInspector.NetworkLogView.prototype = {
         var data = /** @type {number} */ (event.data);
         if (data) {
             this._mainRequestDOMContentLoadedTime = data;
-            this._addEventDividers([data], "network-blue-divider");
+            this._columns.addEventDividers([data], "network-blue-divider");
         }
     },
 
@@ -897,7 +559,7 @@ WebInspector.NetworkLogView.prototype = {
 
     willHide: function()
     {
-        this._popoverHelper.hidePopover();
+        this._columns.willHide();
     },
 
     refresh: function()
@@ -908,7 +570,7 @@ WebInspector.NetworkLogView.prototype = {
             delete this._refreshTimeout;
         }
 
-        this._removeAllNodeHighlights();
+        this.removeAllNodeHighlights();
 
         var oldBoundary = this.calculator().boundary();
         this._timeCalculator.updateBoundariesForEventTime(this._mainRequestLoadTime);
@@ -918,16 +580,26 @@ WebInspector.NetworkLogView.prototype = {
 
         var dataGrid = this._dataGrid;
         var rootNode = dataGrid.rootNode();
+        /** @type {!Array<!WebInspector.NetworkDataGridNode> } */
         var nodesToInsert = [];
+        /** @type {!Array<!WebInspector.NetworkDataGridNode> } */
+        var nodesToRefresh = [];
         for (var requestId in this._staleRequestIds) {
             var node = this._nodesByRequestId.get(requestId);
             if (!node)
                 continue;
-            if (!node[WebInspector.NetworkLogView._isFilteredOutSymbol])
-                rootNode.removeChild(node);
-            node[WebInspector.NetworkLogView._isFilteredOutSymbol] = !this._applyFilter(node);
-            if (!node[WebInspector.NetworkLogView._isFilteredOutSymbol])
-                nodesToInsert.push(node);
+            var isFilteredOut = !this._applyFilter(node);
+            if (node[WebInspector.NetworkLogView._isFilteredOutSymbol] !== isFilteredOut) {
+                if (!node[WebInspector.NetworkLogView._isFilteredOutSymbol])
+                    rootNode.removeChild(node);
+
+                node[WebInspector.NetworkLogView._isFilteredOutSymbol] = isFilteredOut;
+
+                if (!node[WebInspector.NetworkLogView._isFilteredOutSymbol])
+                    nodesToInsert.push(node);
+            }
+            if (!isFilteredOut)
+                nodesToRefresh.push(node);
             var request = node.request();
             this._timeCalculator.updateBoundaries(request);
             this._durationCalculator.updateBoundaries(request);
@@ -936,28 +608,18 @@ WebInspector.NetworkLogView.prototype = {
         for (var i = 0; i < nodesToInsert.length; ++i) {
             var node = nodesToInsert[i];
             var request = node.request();
-            node.refresh();
             dataGrid.insertChild(node);
             node[WebInspector.NetworkLogView._isMatchingSearchQuerySymbol] = this._matchRequest(request);
         }
 
-        this._highlightNthMatchedRequestForSearch(this._updateMatchCountAndFindMatchIndex(this._currentMatchedRequestNode), false);
+        for (var node of nodesToRefresh)
+            node.refresh();
 
-        if (this._shouldSetWaterfallWindow && this._mainRequestLoadTime !== -1) {
-            var waterfallWindow = this.calculator().boundary();
-            var overtime = this._mainRequestLoadTime - waterfallWindow.minimum;
-            overtime = Number.constrain(overtime, WebInspector.NetworkLogView._waterfallMinOvertime, WebInspector.NetworkLogView._waterfallMaxOvertime)
-            var waterfallEnd = this._mainRequestLoadTime + overtime;
-            if (waterfallEnd <= waterfallWindow.maximum) {
-                waterfallWindow.maximum = waterfallEnd;
-                this._shouldSetWaterfallWindow = false;
-                this._timeCalculator.setWindow(waterfallWindow);
-            }
-        }
+        this._highlightNthMatchedRequestForSearch(this._updateMatchCountAndFindMatchIndex(this._currentMatchedRequestNode), false);
 
         if (!this.calculator().boundary().equals(oldBoundary)) {
             // The boundaries changed, so all item graphs are stale.
-            this._updateDividersIfNeeded();
+            this._columns.updateDividersIfNeeded();
             var nodes = this._nodesByRequestId.valuesArray();
             for (var i = 0; i < nodes.length; ++i)
                 nodes[i].refreshGraph();
@@ -972,12 +634,9 @@ WebInspector.NetworkLogView.prototype = {
         this._requestWithHighlightedInitiators = null;
         this.dispatchEventToListeners(WebInspector.NetworkLogView.EventTypes.RequestSelected, null);
 
-        /** @type {boolean} */
-        this._shouldSetWaterfallWindow = Runtime.experiments.isEnabled("showPrimaryLoadWaterfallInNetworkTimeline") && this._networkShowPrimaryLoadWaterfallSetting.get();
-
         this._clearSearchMatchedList();
-        if (this._popoverHelper)
-            this._popoverHelper.hidePopover();
+
+        this._columns.reset();
 
         this._timeFilter = null;
         this._calculator.reset();
@@ -995,13 +654,22 @@ WebInspector.NetworkLogView.prototype = {
         this._mainRequestLoadTime = -1;
         this._mainRequestDOMContentLoadedTime = -1;
         this._eventDividers = [];
-        this._timelineGrid.removeEventDividers();
 
         if (this._dataGrid) {
             this._dataGrid.rootNode().removeChildren();
-            this._updateDividersIfNeeded();
             this._updateSummaryBar();
         }
+    },
+
+    /**
+     * @param {string} filterString
+     */
+    setTextFilterValue: function(filterString)
+    {
+        this._textFilterUI.setValue(filterString);
+        this._textFilterUI.setRegexChecked(false);
+        this._dataURLFilterUI.setChecked(false);
+        this._resourceCategoryFilterUI.reset();
     },
 
     /**
@@ -1063,6 +731,19 @@ WebInspector.NetworkLogView.prototype = {
         this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.Scheme, "" + request.scheme);
         this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.StatusCode, "" + request.statusCode);
 
+        if (request.mixedContentType !== "none") {
+            this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.MixedContent, WebInspector.NetworkLogView.MixedContentFilterValues.All);
+        }
+
+        if (request.mixedContentType === "optionally-blockable") {
+            this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.MixedContent, WebInspector.NetworkLogView.MixedContentFilterValues.Displayed);
+        }
+
+        if (request.mixedContentType === "blockable") {
+            var suggestion = request.wasBlocked() ? WebInspector.NetworkLogView.MixedContentFilterValues.Blocked : WebInspector.NetworkLogView.MixedContentFilterValues.BlockOverridden;
+            this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.MixedContent, suggestion);
+        }
+
         var responseHeaders = request.responseHeaders;
         for (var i = 0, l = responseHeaders.length; i < l; ++i)
             this._suggestionBuilder.addItem(WebInspector.NetworkLogView.FilterType.HasResponseHeader, responseHeaders[i].name);
@@ -1076,7 +757,7 @@ WebInspector.NetworkLogView.prototype = {
 
         this._staleRequestIds[request.requestId] = true;
         this.dispatchEventToListeners(WebInspector.NetworkLogView.EventTypes.UpdateRequest, request);
-        this._scheduleRefresh();
+        this.scheduleRefresh();
     },
 
     /**
@@ -1092,7 +773,8 @@ WebInspector.NetworkLogView.prototype = {
 
         // Pick provisional load requests.
         var requestsToPick = [];
-        var requests = frame.target().networkLog.requests();
+        var networkLog = WebInspector.NetworkLog.fromTarget(frame.target());
+        var requests = networkLog ? networkLog.requests() : [];
         for (var i = 0; i < requests.length; ++i) {
             var request = requests[i];
             if (request.loaderId === loaderId)
@@ -1119,20 +801,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     switchViewMode: function(gridMode)
     {
-        if (this._gridMode === gridMode)
-            return;
-        this._gridMode = gridMode;
-
-        if (gridMode) {
-            if (this._dataGrid.selectedNode)
-                this._dataGrid.selectedNode.selected = false;
-        } else {
-            this._removeAllNodeHighlights();
-            this._popoverHelper.hidePopover();
-        }
-
-        this.element.classList.toggle("brief-mode", !gridMode);
-        this._updateColumns();
+        this._columns.switchViewMode(gridMode);
     },
 
     /**
@@ -1148,100 +817,7 @@ WebInspector.NetworkLogView.prototype = {
         var largeRows = !!this._networkLogLargeRowsSetting.get();
         this._rowHeight = largeRows ? 41 : 21;
         this._dataGrid.element.classList.toggle("small", !largeRows);
-        this._timelineGrid.element.classList.toggle("small", !largeRows);
         this._dataGrid.scheduleUpdate();
-    },
-
-    /**
-     * @param {!Element} element
-     * @param {!Event} event
-     * @return {!Element|!AnchorBox|undefined}
-     */
-    _getPopoverAnchor: function(element, event)
-    {
-        if (!this._gridMode)
-            return;
-        var anchor = element.enclosingNodeOrSelfWithClass("network-graph-bar") || element.enclosingNodeOrSelfWithClass("network-graph-label");
-        if (anchor && anchor.parentElement.request && anchor.parentElement.request.timing)
-            return anchor;
-        anchor = element.enclosingNodeOrSelfWithClass("network-script-initiated");
-        if (anchor && anchor.request) {
-            var initiator = /** @type {!WebInspector.NetworkRequest} */ (anchor.request).initiator();
-            if (initiator && (initiator.stackTrace || initiator.asyncStackTrace))
-                return anchor;
-        }
-    },
-
-    /**
-     * @param {!Element} anchor
-     * @param {!WebInspector.Popover} popover
-     */
-    _showPopover: function(anchor, popover)
-    {
-        var content;
-        if (anchor.classList.contains("network-script-initiated")) {
-            var request = /** @type {!WebInspector.NetworkRequest} */ (anchor.request);
-            var initiator = /** @type {!NetworkAgent.Initiator} */ (request.initiator());
-            content = WebInspector.DOMPresentationUtils.buildStackTracePreviewContents(request.target(), this._popupLinkifier, initiator.stackTrace, initiator.asyncStackTrace);
-            popover.setCanShrink(true);
-        } else {
-            content = WebInspector.RequestTimingView.createTimingTable(anchor.parentElement.request, this._timeCalculator.minimumBoundary());
-            popover.setCanShrink(false);
-        }
-        popover.showForAnchor(content, anchor);
-    },
-
-    _onHidePopover: function()
-    {
-        this._popupLinkifier.reset();
-    },
-
-    _updateColumns: function()
-    {
-        if (!this._dataGrid)
-            return;
-        var gridMode = this._gridMode;
-        var visibleColumns = {"name": true};
-        if (gridMode)
-            visibleColumns["timeline"] = true;
-        if (gridMode) {
-            var columnsVisibility = this._columnsVisibilitySetting.get();
-            for (var columnIdentifier in columnsVisibility)
-                visibleColumns[columnIdentifier] = columnsVisibility[columnIdentifier];
-        }
-
-        this._dataGrid.setColumnsVisiblity(visibleColumns);
-    },
-
-    /**
-     * @param {string} columnIdentifier
-     */
-    _toggleColumnVisibility: function(columnIdentifier)
-    {
-        var columnsVisibility = this._columnsVisibilitySetting.get();
-        columnsVisibility[columnIdentifier] = !columnsVisibility[columnIdentifier];
-        this._columnsVisibilitySetting.set(columnsVisibility);
-
-        this._updateColumns();
-    },
-
-    /**
-     * @return {!Array.<string>}
-     */
-    _getConfigurableColumnIDs: function()
-    {
-        if (this._configurableColumnIDs)
-            return this._configurableColumnIDs;
-
-        var columnTitles = WebInspector.NetworkLogView._columnTitles;
-        function compare(id1, id2)
-        {
-            return columnTitles[id1].compareTo(columnTitles[id2]);
-        }
-
-        var columnIDs = Object.keys(this._columnsVisibilitySetting.get());
-        this._configurableColumnIDs = columnIDs.sort(compare);
-        return this._configurableColumnIDs;
     },
 
     /**
@@ -1249,19 +825,10 @@ WebInspector.NetworkLogView.prototype = {
      */
     _contextMenu: function(event)
     {
-        var contextMenu = new WebInspector.ContextMenu(event);
-
-        if (this._gridMode && event.target.isSelfOrDescendant(this._dataGrid.headerTableBody)) {
-            var columnsVisibility = this._columnsVisibilitySetting.get();
-            var columnIDs = this._getConfigurableColumnIDs();
-            var columnTitles = WebInspector.NetworkLogView._columnTitles;
-            for (var i = 0; i < columnIDs.length; ++i) {
-                var columnIdentifier = columnIDs[i];
-                contextMenu.appendCheckboxItem(columnTitles[columnIdentifier], this._toggleColumnVisibility.bind(this, columnIdentifier), !!columnsVisibility[columnIdentifier]);
-            }
-            contextMenu.show();
+        // TODO(allada) Fix datagrid's contextmenu so NetworkLogViewColumns can attach it's own contextmenu event
+        if (this._columns.contextMenu(event))
             return;
-        }
+        var contextMenu = new WebInspector.ContextMenu(event);
 
         var gridNode = this._dataGrid.dataGridNodeFromNode(event.target);
         var request = gridNode && gridNode.request();
@@ -1299,10 +866,25 @@ WebInspector.NetworkLogView.prototype = {
         contextMenu.appendItem(WebInspector.UIString.capitalize("Clear ^browser ^cache"), this._clearBrowserCache.bind(this));
         contextMenu.appendItem(WebInspector.UIString.capitalize("Clear ^browser ^cookies"), this._clearBrowserCookies.bind(this));
 
-        var manager = WebInspector.multitargetNetworkManager;
-        if (Runtime.experiments.isEnabled("blockedURLs") && request && !manager.blockedURLs().has(request.url)) {
+        var blockedSetting = WebInspector.moduleSetting("blockedURLs");
+        if (request && Runtime.experiments.isEnabled("requestBlocking")) {  // Disabled until ready.
             contextMenu.appendSeparator();
-            contextMenu.appendItem(WebInspector.UIString.capitalize("Block ^request URL"), manager.toggleURLBlocked.bind(manager, request.url));
+
+            var urlWithoutScheme = request.parsedURL.urlWithoutScheme();
+            if (urlWithoutScheme && blockedSetting.get().indexOf(urlWithoutScheme) === -1)
+                contextMenu.appendItem(WebInspector.UIString.capitalize("Block ^request URL"), addBlockedURL.bind(null, urlWithoutScheme));
+
+            var domain = request.parsedURL.domain();
+            if (domain && blockedSetting.get().indexOf(domain) === -1)
+                contextMenu.appendItem(WebInspector.UIString.capitalize("Block ^request ^domain"), addBlockedURL.bind(null, domain));
+
+            function addBlockedURL(url)
+            {
+                var list = blockedSetting.get();
+                list.push(url);
+                blockedSetting.set(list);
+                WebInspector.inspectorView.showViewInDrawer("network.blocked-urls");
+            }
         }
 
         if (request && request.resourceType() === WebInspector.resourceTypes.XHR) {
@@ -1351,7 +933,7 @@ WebInspector.NetworkLogView.prototype = {
                 content = request.asDataURL();
             InspectorFrontendHost.copyText(content || "");
         }
-        request.requestContent(callback);
+        request.requestContent().then(callback);
     },
 
     /**
@@ -1394,20 +976,14 @@ WebInspector.NetworkLogView.prototype = {
 
     _clearBrowserCache: function()
     {
-        if (confirm(WebInspector.UIString("Are you sure you want to clear browser cache?"))) {
-            var target = WebInspector.targetManager.mainTarget()
-            if (target)
-                target.networkManager.clearBrowserCache();
-        }
+        if (confirm(WebInspector.UIString("Are you sure you want to clear browser cache?")))
+            WebInspector.multitargetNetworkManager.clearBrowserCache();
     },
 
     _clearBrowserCookies: function()
     {
-        if (confirm(WebInspector.UIString("Are you sure you want to clear browser cookies?"))) {
-            var target = WebInspector.targetManager.mainTarget()
-            if (target)
-                target.networkManager.clearBrowserCookies();
-        }
+        if (confirm(WebInspector.UIString("Are you sure you want to clear browser cookies?")))
+            WebInspector.multitargetNetworkManager.clearBrowserCookies();
     },
 
     /**
@@ -1416,7 +992,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     _matchRequest: function(request)
     {
-        var re = this._searchRegExp;
+        var re = this._searchRegex;
         if (!re)
             return false;
         return re.test(request.name()) || (this._networkLogLargeRowsSetting.get() && re.test(request.path()));
@@ -1431,10 +1007,15 @@ WebInspector.NetworkLogView.prototype = {
 
     _removeAllHighlights: function()
     {
-        this._removeAllNodeHighlights();
+        this.removeAllNodeHighlights();
         for (var i = 0; i < this._highlightedSubstringChanges.length; ++i)
             WebInspector.revertDomChanges(this._highlightedSubstringChanges[i]);
         this._highlightedSubstringChanges = [];
+    },
+
+    dataGridSorted: function()
+    {
+        this._highlightNthMatchedRequestForSearch(this._updateMatchCountAndFindMatchIndex(this._currentMatchedRequestNode), false);
     },
 
     /**
@@ -1466,7 +1047,7 @@ WebInspector.NetworkLogView.prototype = {
         var request = node.request();
         if (reveal)
             WebInspector.Revealer.reveal(request);
-        var highlightedSubstringChanges = node.highlightMatchedSubstring(this._searchRegExp);
+        var highlightedSubstringChanges = node.highlightMatchedSubstring(this._searchRegex);
         this._highlightedSubstringChanges.push(highlightedSubstringChanges);
 
         this._currentMatchedRequestNode = node;
@@ -1485,7 +1066,7 @@ WebInspector.NetworkLogView.prototype = {
         var query = searchConfig.query;
         var currentMatchedRequestNode = this._currentMatchedRequestNode;
         this._clearSearchMatchedList();
-        this._searchRegExp = createPlainTextSearchRegex(query, "i");
+        this._searchRegex = createPlainTextSearchRegex(query, "i");
 
         /** @type {!Array.<!WebInspector.NetworkDataGridNode>} */
         var nodes = this._dataGrid.rootNode().children;
@@ -1512,7 +1093,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     supportsRegexSearch: function()
     {
-        return false;
+        return true;
     },
 
     /**
@@ -1562,6 +1143,8 @@ WebInspector.NetworkLogView.prototype = {
             return false;
         if (this._dataURLFilterUI.checked() && request.parsedURL.isDataURL())
             return false;
+        if (request.statusText === "Service Worker Fallback Required")
+            return false;
         for (var i = 0; i < this._filters.length; ++i) {
             if (!this._filters[i](request))
                 return false;
@@ -1574,8 +1157,14 @@ WebInspector.NetworkLogView.prototype = {
      */
     _parseFilterQuery: function(query)
     {
-        var parsedQuery = this._suggestionBuilder.parseQuery(query);
-        this._filters = parsedQuery.text.map(this._createTextFilter);
+        var parsedQuery;
+        if (this._textFilterUI.isRegexChecked() && query !== "")
+            parsedQuery = {text: [query], filters: []};
+        else
+            parsedQuery = this._suggestionBuilder.parseQuery(query);
+
+        this._filters = parsedQuery.text.map(this._createTextFilter, this);
+
         var n = parsedQuery.filters.length;
         for (var i = 0; i < n; ++i) {
             var filter = parsedQuery.filters[i];
@@ -1591,12 +1180,17 @@ WebInspector.NetworkLogView.prototype = {
     _createTextFilter: function(text)
     {
         var negative = false;
-        if (text[0] === "-" && text.length > 1) {
+        /** @type {?RegExp} */
+        var regex;
+        if (!this._textFilterUI.isRegexChecked() && text[0] === "-" && text.length > 1) {
             negative = true;
             text = text.substring(1);
+            regex = new RegExp(text.escapeForRegExp(), "i");
+        } else {
+            regex = this._textFilterUI.regex();
         }
-        var regexp = new RegExp(text.escapeForRegExp(), "i");
-        var filter = WebInspector.NetworkLogView._requestNameOrPathFilter.bind(null, regexp);
+
+        var filter = WebInspector.NetworkLogView._requestNameOrPathFilter.bind(null, regex);
         if (negative)
             filter = WebInspector.NetworkLogView._negativeFilter.bind(null, filter);
         return filter;
@@ -1645,6 +1239,9 @@ WebInspector.NetworkLogView.prototype = {
 
         case WebInspector.NetworkLogView.FilterType.MimeType:
             return WebInspector.NetworkLogView._requestMimeTypeFilter.bind(null, value);
+
+        case WebInspector.NetworkLogView.FilterType.MixedContent:
+            return WebInspector.NetworkLogView._requestMixedContentFilter.bind(null, /** @type {!WebInspector.NetworkLogView.MixedContentFilterValues} */ (value));
 
         case WebInspector.NetworkLogView.FilterType.Scheme:
             return WebInspector.NetworkLogView._requestSchemeFilter.bind(null, value);
@@ -1717,7 +1314,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     searchCanceled: function()
     {
-        delete this._searchRegExp;
+        delete this._searchRegex;
         this._clearSearchMatchedList();
         this.dispatchEventToListeners(WebInspector.NetworkLogView.EventTypes.SearchCountUpdated, 0);
     },
@@ -1727,7 +1324,7 @@ WebInspector.NetworkLogView.prototype = {
      */
     revealAndHighlightRequest: function(request)
     {
-        this._removeAllNodeHighlights();
+        this.removeAllNodeHighlights();
 
         var node = this._nodesByRequestId.get(request.requestId);
         if (node) {
@@ -1736,7 +1333,7 @@ WebInspector.NetworkLogView.prototype = {
         }
     },
 
-    _removeAllNodeHighlights: function()
+    removeAllNodeHighlights: function()
     {
         if (this._highlightedNode) {
             this._highlightedNode.element().classList.remove("highlighted-row");
@@ -1794,10 +1391,10 @@ WebInspector.NetworkLogView.prototype = {
                 if (code < 256) {
                     // Add leading zero when needed to not care about the next character.
                     return code < 16 ? "\\x0" + code.toString(16) : "\\x" + code.toString(16);
-                 }
-                 code = code.toString(16);
-                 return "\\u" + ("0000" + code).substr(code.length, 4);
-             }
+                }
+                code = code.toString(16);
+                return "\\u" + ("0000" + code).substr(code.length, 4);
+            }
 
             if (/[^\x20-\x7E]|\'/.test(str)) {
                 // Use ANSI-C quoting syntax.
@@ -1822,15 +1419,15 @@ WebInspector.NetworkLogView.prototype = {
         var data = [];
         var requestContentType = request.requestContentType();
         if (requestContentType && requestContentType.startsWith("application/x-www-form-urlencoded") && request.requestFormData) {
-           data.push("--data");
-           data.push(escapeString(request.requestFormData));
-           ignoredHeaders["content-length"] = true;
-           inferredMethod = "POST";
+            data.push("--data");
+            data.push(escapeString(request.requestFormData));
+            ignoredHeaders["content-length"] = true;
+            inferredMethod = "POST";
         } else if (request.requestFormData) {
-           data.push("--data-binary");
-           data.push(escapeString(request.requestFormData));
-           ignoredHeaders["content-length"] = true;
-           inferredMethod = "POST";
+            data.push("--data-binary");
+            data.push(escapeString(request.requestFormData));
+            ignoredHeaders["content-length"] = true;
+            inferredMethod = "POST";
         }
 
         if (request.requestMethod !== inferredMethod) {
@@ -1849,6 +1446,9 @@ WebInspector.NetworkLogView.prototype = {
         }
         command = command.concat(data);
         command.push("--compressed");
+
+        if (request.securityState() === SecurityAgent.SecurityState.Insecure)
+            command.push("--insecure");
         return command.join(" ");
     },
 
@@ -1869,12 +1469,14 @@ WebInspector.NetworkLogView._negativeFilter = function(filter, request)
 }
 
 /**
- * @param {!RegExp} regex
+ * @param {?RegExp} regex
  * @param {!WebInspector.NetworkRequest} request
  * @return {boolean}
  */
 WebInspector.NetworkLogView._requestNameOrPathFilter = function(regex, request)
 {
+    if (!regex)
+        return false;
     return regex.test(request.name()) || regex.test(request.path());
 }
 
@@ -1958,6 +1560,25 @@ WebInspector.NetworkLogView._requestMethodFilter = function(value, request)
 WebInspector.NetworkLogView._requestMimeTypeFilter = function(value, request)
 {
     return request.mimeType === value;
+}
+
+/**
+ * @param {!WebInspector.NetworkLogView.MixedContentFilterValues} value
+ * @param {!WebInspector.NetworkRequest} request
+ * @return {boolean}
+ */
+WebInspector.NetworkLogView._requestMixedContentFilter = function(value, request)
+{
+    if (value === WebInspector.NetworkLogView.MixedContentFilterValues.Displayed) {
+        return request.mixedContentType === "optionally-blockable";
+    } else if (value === WebInspector.NetworkLogView.MixedContentFilterValues.Blocked) {
+        return request.mixedContentType === "blockable" && request.wasBlocked();
+    } else if (value === WebInspector.NetworkLogView.MixedContentFilterValues.BlockOverridden) {
+        return request.mixedContentType === "blockable" && !request.wasBlocked();
+    } else if (value === WebInspector.NetworkLogView.MixedContentFilterValues.All) {
+        return request.mixedContentType !== "none";
+    }
+    return false;
 }
 
 /**

@@ -187,6 +187,20 @@ WebInspector.TextRange.prototype = {
     },
 
     /**
+     * @param {number} lineNumber
+     * @param {number} columnNumber
+     * @return {number}
+     */
+    compareToPosition: function(lineNumber, columnNumber)
+    {
+        if (lineNumber < this.startLine || (lineNumber === this.startLine && columnNumber < this.startColumn))
+            return -1;
+        if (lineNumber > this.endLine || (lineNumber === this.endLine && columnNumber > this.endColumn))
+            return 1;
+        return 0;
+    },
+
+    /**
      * @param {!WebInspector.TextRange} other
      * @return {boolean}
      */
@@ -194,15 +208,6 @@ WebInspector.TextRange.prototype = {
     {
         return this.startLine === other.startLine && this.endLine === other.endLine &&
             this.startColumn === other.startColumn && this.endColumn === other.endColumn;
-    },
-
-    /**
-     * @param {number} lineOffset
-     * @return {!WebInspector.TextRange}
-     */
-    shift: function(lineOffset)
-    {
-        return new WebInspector.TextRange(this.startLine + lineOffset, this.startColumn, this.endLine + lineOffset, this.endColumn);
     },
 
     /**
@@ -214,25 +219,14 @@ WebInspector.TextRange.prototype = {
     {
         var relative = this.clone();
 
-        if (this.startLine == line)
+        if (this.startLine === line)
             relative.startColumn -= column;
-        if (this.endLine == line)
+        if (this.endLine === line)
             relative.endColumn -= column;
 
         relative.startLine -= line;
         relative.endLine -= line;
         return relative;
-    },
-
-    /**
-     * @param {string} text
-     * @return {!WebInspector.SourceRange}
-     */
-    toSourceRange: function(text)
-    {
-        var start = (this.startLine ? text.lineEndings()[this.startLine - 1] + 1 : 0) + this.startColumn;
-        var end = (this.endLine ? text.lineEndings()[this.endLine - 1] + 1 : 0) + this.endColumn;
-        return new WebInspector.SourceRange(start, end - start);
     },
 
     /**
@@ -268,15 +262,42 @@ WebInspector.TextRange.prototype = {
     },
 
     /**
-     * @param {string} text
-     * @param {string} replacement
-     * @return {string}
+     * @param {number} lineNumber
+     * @param {number} columnNumber
+     * @return {boolean}
      */
-    replaceInText: function(text, replacement)
+    containsLocation: function(lineNumber, columnNumber)
     {
-        var sourceRange = this.toSourceRange(text);
-        return text.substring(0, sourceRange.offset) + replacement + text.substring(sourceRange.offset + sourceRange.length);
+        if (this.startLine === this.endLine)
+            return this.startLine === lineNumber && this.startColumn <= columnNumber && columnNumber <= this.endColumn;
+        if (this.startLine === lineNumber)
+            return this.startColumn <= columnNumber;
+        if (this.endLine === lineNumber)
+            return columnNumber <= this.endColumn;
+        return this.startLine < lineNumber && lineNumber < this.endLine;
     }
+}
+
+/**
+ * @param {!WebInspector.TextRange} oldRange
+ * @param {string} newText
+ * @return {!WebInspector.TextRange}
+ */
+WebInspector.TextRange.fromEdit = function(oldRange, newText)
+{
+    var endLine = oldRange.startLine;
+    var endColumn = oldRange.startColumn + newText.length;
+    var lineEndings = newText.computeLineEndings();
+    if (lineEndings.length > 1) {
+        endLine = oldRange.startLine + lineEndings.length - 1;
+        var len = lineEndings.length;
+        endColumn = lineEndings[len - 1] - lineEndings[len - 2] - 1;
+    }
+    return new WebInspector.TextRange(
+        oldRange.startLine,
+        oldRange.startColumn,
+        endLine,
+        endColumn);
 }
 
 /**
@@ -288,4 +309,37 @@ WebInspector.SourceRange = function(offset, length)
 {
     this.offset = offset;
     this.length = length;
+}
+
+/**
+ * @constructor
+ * @param {string} sourceURL
+ * @param {!WebInspector.TextRange} oldRange
+ * @param {string} newText
+ */
+WebInspector.SourceEdit = function(sourceURL, oldRange, newText)
+{
+    this.sourceURL = sourceURL;
+    this.oldRange = oldRange;
+    this.newText = newText;
+}
+
+WebInspector.SourceEdit.prototype = {
+    /**
+     * @return {!WebInspector.TextRange}
+     */
+    newRange: function()
+    {
+        return WebInspector.TextRange.fromEdit(this.oldRange, this.newText);
+    },
+}
+
+/**
+ * @param {!WebInspector.SourceEdit} edit1
+ * @param {!WebInspector.SourceEdit} edit2
+ * @return {number}
+ */
+WebInspector.SourceEdit.comparator = function(edit1, edit2)
+{
+    return WebInspector.TextRange.comparator(edit1.oldRange, edit2.oldRange);
 }

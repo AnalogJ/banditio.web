@@ -58,12 +58,13 @@ WebInspector.ObjectPopoverHelper.prototype = {
         /**
          * @param {!WebInspector.RemoteObject} funcObject
          * @param {!Element} popoverContentElement
+         * @param {!Element} popoverValueElement
          * @param {!Element} anchorElement
          * @param {?Array.<!WebInspector.RemoteObjectProperty>} properties
          * @param {?Array.<!WebInspector.RemoteObjectProperty>} internalProperties
          * @this {WebInspector.ObjectPopoverHelper}
          */
-        function didGetFunctionProperties(funcObject, popoverContentElement, anchorElement, properties, internalProperties)
+        function didGetFunctionProperties(funcObject, popoverContentElement, popoverValueElement, anchorElement, properties, internalProperties)
         {
             if (internalProperties) {
                 for (var i = 0; i < internalProperties.length; i++) {
@@ -73,7 +74,8 @@ WebInspector.ObjectPopoverHelper.prototype = {
                     }
                 }
             }
-            funcObject.functionDetails(didGetFunctionDetails.bind(this, popoverContentElement, anchorElement));
+            WebInspector.ObjectPropertiesSection.formatObjectAsFunction(funcObject, popoverValueElement, true);
+            funcObject.debuggerModel().functionDetailsPromise(funcObject).then(didGetFunctionDetails.bind(this, popoverContentElement, anchorElement));
         }
 
         /**
@@ -93,31 +95,18 @@ WebInspector.ObjectPopoverHelper.prototype = {
             functionName.textContent = WebInspector.beautifyFunctionName(response.functionName);
 
             var rawLocation = response.location;
-            var sourceURL = response.sourceURL;
-            if (rawLocation && sourceURL) {
-                var link = this._lazyLinkifier().linkifyRawLocation(rawLocation, sourceURL, "function-location-link");
-                title.appendChild(link);
+            var linkContainer = title.createChild("div", "function-title-link-container");
+            if (rawLocation && Runtime.experiments.isEnabled("continueToFirstInvocation")) {
+                var sectionToolbar = new WebInspector.Toolbar("function-location-step-into", linkContainer);
+                var stepInto = new WebInspector.ToolbarButton(WebInspector.UIString("Continue to first invocation"), "step-in-toolbar-item");
+                stepInto.addEventListener("click", () => rawLocation.continueToLocation());
+                sectionToolbar.appendToolbarItem(stepInto);
             }
-
+            var sourceURL = rawLocation && rawLocation.script() ? rawLocation.script().sourceURL : null;
+            if (rawLocation && sourceURL)
+                linkContainer.appendChild(this._lazyLinkifier().linkifyRawLocation(rawLocation, sourceURL));
             container.appendChild(popoverContentElement);
             popover.showForAnchor(container, anchorElement);
-        }
-
-        /**
-         * @param {?WebInspector.DebuggerModel.GeneratorObjectDetails} response
-         * @this {WebInspector.ObjectPopoverHelper}
-         */
-        function didGetGeneratorObjectDetails(response)
-        {
-            if (!response || popover.disposed)
-                return;
-
-            var rawLocation = response.location;
-            var sourceURL = response.sourceURL;
-            if (rawLocation && sourceURL) {
-                var link = this._lazyLinkifier().linkifyRawLocation(rawLocation, sourceURL, "function-location-link");
-                this._titleElement.appendChild(link);
-            }
         }
 
         /**
@@ -140,19 +129,17 @@ WebInspector.ObjectPopoverHelper.prototype = {
             var popoverContentElement = null;
             if (result.type !== "object") {
                 popoverContentElement =  createElement("span");
-                popoverContentElement.appendChild(WebInspector.Widget.createStyleElement("components/objectValue.css"));
+                WebInspector.appendStyle(popoverContentElement, "components/objectValue.css");
                 var valueElement = popoverContentElement.createChild("span", "monospace object-value-" + result.type);
                 valueElement.style.whiteSpace = "pre";
 
                 if (result.type === "string")
                     valueElement.createTextChildren("\"", description, "\"");
-                else if (result.type === "function")
-                    WebInspector.ObjectPropertiesSection.formatObjectAsFunction(result, valueElement, true);
-                else
+                else if (result.type !== "function")
                     valueElement.textContent = description;
 
                 if (result.type === "function") {
-                    result.getOwnProperties(didGetFunctionProperties.bind(this, result, popoverContentElement, anchorElement));
+                    result.getOwnProperties(didGetFunctionProperties.bind(this, result, popoverContentElement, valueElement, anchorElement));
                     return;
                 }
                 popover.showForAnchor(popoverContentElement, anchorElement);
@@ -170,20 +157,16 @@ WebInspector.ObjectPopoverHelper.prototype = {
                     popoverContentElement = createElement("div");
                     this._titleElement = popoverContentElement.createChild("div", "monospace");
                     this._titleElement.createChild("span", "source-frame-popover-title").textContent = description;
-                    var section = new WebInspector.ObjectPropertiesSection(result, "");
+                    var section = new WebInspector.ObjectPropertiesSection(result, "", this._lazyLinkifier());
                     section.element.classList.add("source-frame-popover-tree");
                     section.titleLessMode();
                     popoverContentElement.appendChild(section.element);
-
-                    if (result.subtype === "generator")
-                        result.generatorObjectDetails(didGetGeneratorObjectDetails.bind(this));
                 }
                 var popoverWidth = 300;
                 var popoverHeight = 250;
                 popover.showForAnchor(popoverContentElement, anchorElement, popoverWidth, popoverHeight);
             }
         }
-
         this._queryObject(element, didQueryObject.bind(this), this._popoverObjectGroup);
     },
 

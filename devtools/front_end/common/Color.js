@@ -62,6 +62,8 @@ WebInspector.Color.Format = {
     Nickname: "nickname",
     HEX: "hex",
     ShortHEX: "shorthex",
+    HEXA: "hexa",
+    ShortHEXA: "shorthexa",
     RGB: "rgb",
     RGBA: "rgba",
     HSL: "hsl",
@@ -76,21 +78,28 @@ WebInspector.Color.parse = function(text)
 {
     // Simple - #hex, rgb(), nickname, hsl()
     var value = text.toLowerCase().replace(/\s+/g, "");
-    var simple = /^(?:#([0-9a-f]{3}|[0-9a-f]{6})|rgb\(((?:-?\d+%?,){2}-?\d+%?)\)|(\w+)|hsl\((-?\d+\.?\d*(?:,-?\d+\.?\d*%){2})\))$/i;
+    var simple = /^(?:#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|rgb\(((?:-?\d+%?,){2}-?\d+%?)\)|(\w+)|hsl\((-?\d+\.?\d*(?:,-?\d+\.?\d*%){2})\))$/i;
     var match = value.match(simple);
     if (match) {
         if (match[1]) { // hex
-            var hex = match[1].toUpperCase();
+            var hex = match[1].toLowerCase();
             var format;
             if (hex.length === 3) {
                 format = WebInspector.Color.Format.ShortHEX;
                 hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
-            } else
+            } else if (hex.length === 4) {
+                format = WebInspector.Color.Format.ShortHEXA;
+                hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2) + hex.charAt(3) + hex.charAt(3);
+            } else if (hex.length === 6) {
                 format = WebInspector.Color.Format.HEX;
+            } else {
+                format = WebInspector.Color.Format.HEXA;
+            }
             var r = parseInt(hex.substring(0,2), 16);
             var g = parseInt(hex.substring(2,4), 16);
             var b = parseInt(hex.substring(4,6), 16);
-            return new WebInspector.Color([r / 255, g / 255, b / 255, 1], format, text);
+            var a = hex.length === 8 ? parseInt(hex.substring(6, 8), 16) / 255 : 1;
+            return new WebInspector.Color([r / 255, g / 255, b / 255, a], format, text);
         }
 
         if (match[2]) { // rgb
@@ -119,7 +128,7 @@ WebInspector.Color.parse = function(text)
                          WebInspector.Color._parseSatLightNumeric(hslString[1]),
                          WebInspector.Color._parseSatLightNumeric(hslString[2]), 1 ];
             var rgba = [];
-            WebInspector.Color._hsl2rgb(hsla, rgba);
+            WebInspector.Color.hsl2rgb(hsla, rgba);
             return new WebInspector.Color(rgba, WebInspector.Color.Format.HSL, text);
         }
 
@@ -127,7 +136,7 @@ WebInspector.Color.parse = function(text)
     }
 
     // Advanced - rgba(), hsla()
-    var advanced = /^(?:rgba\(((?:-?\d+%?,){3}-?\d+(?:\.\d+)?)\)|hsla\((-?\d+\.?\d*(?:,-?\d+\.?\d*%){2},-?\d+(?:\.\d+)?)\))$/;
+    var advanced = /^(?:rgba\(((?:-?\d+%?,){3}-?(?:\d+|\d*\.\d+))\)|hsla\((-?(?:\d+|\d*\.\d+)(?:,-?(?:\d+|\d*\.\d+)*%){2},-?(?:\d+|\d*\.\d+))\))$/;
     match = value.match(advanced);
     if (match) {
         if (match[1]) { // rgba
@@ -146,7 +155,7 @@ WebInspector.Color.parse = function(text)
                          WebInspector.Color._parseSatLightNumeric(hslaString[2]),
                          WebInspector.Color._parseAlphaNumeric(hslaString[3]) ];
             var rgba = [];
-            WebInspector.Color._hsl2rgb(hsla, rgba);
+            WebInspector.Color.hsl2rgb(hsla, rgba);
             return new WebInspector.Color(rgba, WebInspector.Color.Format.HSLA, text);
         }
     }
@@ -201,18 +210,18 @@ WebInspector.Color.prototype = {
         if (min === max)
             var h = 0;
         else if (r === max)
-            var h = ((1/6 * (g - b) / diff) + 1) % 1;
+            var h = ((1 / 6 * (g - b) / diff) + 1) % 1;
         else if (g === max)
-            var h = (1/6 * (b - r) / diff) + 1/3;
+            var h = (1 / 6 * (b - r) / diff) + 1 / 3;
         else
-            var h = (1/6 * (r - g) / diff) + 2/3;
+            var h = (1 / 6 * (r - g) / diff) + 2 / 3;
 
         var l = 0.5 * add;
 
         if (l === 0)
             var s = 0;
         else if (l === 1)
-            var s = 1;
+            var s = 0;
         else if (l <= 0.5)
             var s = diff / add;
         else
@@ -254,18 +263,21 @@ WebInspector.Color.prototype = {
     },
 
     /**
-     * @return {boolean}
+     * @return {!WebInspector.Color.Format}
      */
-    canBeShortHex: function()
+    detectHEXFormat: function()
     {
-        if (this.hasAlpha())
-            return false;
-        for (var i = 0; i < 3; ++i) {
+        var canBeShort = true;
+        for (var i = 0; i < 4; ++i) {
             var c = Math.round(this._rgba[i] * 255);
             if (c % 17)
-                return false;
+                canBeShort = false;
         }
-        return true;
+        var hasAlpha = this.hasAlpha();
+        var cf = WebInspector.Color.Format;
+        if (canBeShort)
+            return hasAlpha ? cf.ShortHEXA : cf.ShortHEX;
+        return hasAlpha ? cf.HEXA : cf.HEX;
     },
 
     /**
@@ -324,14 +336,21 @@ WebInspector.Color.prototype = {
         case WebInspector.Color.Format.HSLA:
             var hsla = this.hsla();
             return String.sprintf("hsla(%d, %d%, %d%, %f)", Math.round(hsla[0] * 360), Math.round(hsla[1] * 100), Math.round(hsla[2] * 100), hsla[3]);
+        case WebInspector.Color.Format.HEXA:
+            return String.sprintf("#%s%s%s%s", toHexValue(this._rgba[0]), toHexValue(this._rgba[1]), toHexValue(this._rgba[2]), toHexValue(this._rgba[3])).toLowerCase();
         case WebInspector.Color.Format.HEX:
             if (this.hasAlpha())
                 return null;
-            return String.sprintf("#%s%s%s", toHexValue(this._rgba[0]), toHexValue(this._rgba[1]), toHexValue(this._rgba[2])).toUpperCase();
-        case WebInspector.Color.Format.ShortHEX:
-            if (!this.canBeShortHex())
+            return String.sprintf("#%s%s%s", toHexValue(this._rgba[0]), toHexValue(this._rgba[1]), toHexValue(this._rgba[2])).toLowerCase();
+        case WebInspector.Color.Format.ShortHEXA:
+            var hexFormat = this.detectHEXFormat();
+            if (hexFormat !== WebInspector.Color.Format.ShortHEXA && hexFormat !== WebInspector.Color.Format.ShortHEX)
                 return null;
-            return String.sprintf("#%s%s%s", toShortHexValue(this._rgba[0]), toShortHexValue(this._rgba[1]), toShortHexValue(this._rgba[2])).toUpperCase();
+            return String.sprintf("#%s%s%s%s", toShortHexValue(this._rgba[0]), toShortHexValue(this._rgba[1]), toShortHexValue(this._rgba[2]), toShortHexValue(this._rgba[3])).toLowerCase();
+        case WebInspector.Color.Format.ShortHEX:
+            if (this.detectHEXFormat() !== WebInspector.Color.Format.ShortHEX)
+                return null;
+            return String.sprintf("#%s%s%s", toShortHexValue(this._rgba[0]), toShortHexValue(this._rgba[1]), toShortHexValue(this._rgba[2])).toLowerCase();
         case WebInspector.Color.Format.Nickname:
             return this.nickname();
         }
@@ -407,12 +426,12 @@ WebInspector.Color.prototype = {
      * @param {number} alpha
      * @return {!WebInspector.Color}
      */
-     setAlpha: function(alpha)
-     {
-         var rgba = this._rgba.slice();
-         rgba[3] = alpha;
-         return new WebInspector.Color(rgba, WebInspector.Color.Format.RGBA);
-     }
+    setAlpha: function(alpha)
+    {
+        var rgba = this._rgba.slice();
+        rgba[3] = alpha;
+        return new WebInspector.Color(rgba, WebInspector.Color.Format.RGBA);
+    }
 }
 
 /**
@@ -474,7 +493,7 @@ WebInspector.Color._hsva2hsla = function(hsva, out_hsla)
 
     out_hsla[0] = h;
     out_hsla[1] = s;
-    out_hsla[2] = t/2;
+    out_hsla[2] = t / 2;
     out_hsla[3] = hsva[3];
 }
 
@@ -482,7 +501,7 @@ WebInspector.Color._hsva2hsla = function(hsva, out_hsla)
  * @param {!Array.<number>} hsl
  * @param {!Array.<number>} out_rgb
  */
-WebInspector.Color._hsl2rgb = function(hsl, out_rgb)
+WebInspector.Color.hsl2rgb = function(hsl, out_rgb)
 {
     var h = hsl[0];
     var s = hsl[1];
@@ -532,7 +551,7 @@ WebInspector.Color._hsl2rgb = function(hsl, out_rgb)
 WebInspector.Color.hsva2rgba = function(hsva, out_rgba)
 {
     WebInspector.Color._hsva2hsla(hsva, WebInspector.Color.hsva2rgba._tmpHSLA);
-    WebInspector.Color._hsl2rgb(WebInspector.Color.hsva2rgba._tmpHSLA, out_rgba);
+    WebInspector.Color.hsl2rgb(WebInspector.Color.hsva2rgba._tmpHSLA, out_rgba);
 
     for (var i = 0; i < WebInspector.Color.hsva2rgba._tmpHSLA.length; i++)
         WebInspector.Color.hsva2rgba._tmpHSLA[i] = 0;
@@ -554,9 +573,9 @@ WebInspector.Color.luminance = function(rgba)
     var gSRGB = rgba[1];
     var bSRGB = rgba[2];
 
-    var r = rSRGB <= 0.03928 ? rSRGB / 12.92 : Math.pow(((rSRGB + 0.055)/1.055), 2.4);
-    var g = gSRGB <= 0.03928 ? gSRGB / 12.92 : Math.pow(((gSRGB + 0.055)/1.055), 2.4);
-    var b = bSRGB <= 0.03928 ? bSRGB / 12.92 : Math.pow(((bSRGB + 0.055)/1.055), 2.4);
+    var r = rSRGB <= 0.03928 ? rSRGB / 12.92 : Math.pow(((rSRGB + 0.055) / 1.055), 2.4);
+    var g = gSRGB <= 0.03928 ? gSRGB / 12.92 : Math.pow(((gSRGB + 0.055) / 1.055), 2.4);
+    var b = bSRGB <= 0.03928 ? bSRGB / 12.92 : Math.pow(((bSRGB + 0.055) / 1.055), 2.4);
 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
@@ -565,16 +584,16 @@ WebInspector.Color.luminance = function(rgba)
  * Combine the two given color according to alpha blending.
  * @param {!Array<number>} fgRGBA
  * @param {!Array<number>} bgRGBA
- * @param {!Array<number>} out_flattened
+ * @param {!Array<number>} out_blended
  */
-WebInspector.Color.flattenColors = function(fgRGBA, bgRGBA, out_flattened)
+WebInspector.Color.blendColors = function(fgRGBA, bgRGBA, out_blended)
 {
     var alpha = fgRGBA[3];
 
-    out_flattened[0] = ((1 - alpha) * bgRGBA[0]) + (alpha * fgRGBA[0]);
-    out_flattened[1] = ((1 - alpha) * bgRGBA[1]) + (alpha * fgRGBA[1]);
-    out_flattened[2] = ((1 - alpha) * bgRGBA[2]) + (alpha * fgRGBA[2]);
-    out_flattened[3] = alpha + (bgRGBA[3] * (1 - alpha));
+    out_blended[0] = ((1 - alpha) * bgRGBA[0]) + (alpha * fgRGBA[0]);
+    out_blended[1] = ((1 - alpha) * bgRGBA[1]) + (alpha * fgRGBA[1]);
+    out_blended[2] = ((1 - alpha) * bgRGBA[2]) + (alpha * fgRGBA[2]);
+    out_blended[3] = alpha + (bgRGBA[3] * (1 - alpha));
 }
 
 /**
@@ -587,20 +606,49 @@ WebInspector.Color.flattenColors = function(fgRGBA, bgRGBA, out_flattened)
  */
 WebInspector.Color.calculateContrastRatio = function(fgRGBA, bgRGBA)
 {
-    WebInspector.Color.flattenColors(fgRGBA, bgRGBA, WebInspector.Color.calculateContrastRatio._flattenedFg);
+    WebInspector.Color.blendColors(fgRGBA, bgRGBA, WebInspector.Color.calculateContrastRatio._blendedFg);
 
-    var fgLuminance = WebInspector.Color.luminance(WebInspector.Color.calculateContrastRatio._flattenedFg);
+    var fgLuminance = WebInspector.Color.luminance(WebInspector.Color.calculateContrastRatio._blendedFg);
     var bgLuminance = WebInspector.Color.luminance(bgRGBA);
     var contrastRatio = (Math.max(fgLuminance, bgLuminance) + 0.05) /
         (Math.min(fgLuminance, bgLuminance) + 0.05);
 
-    for (var i = 0; i < WebInspector.Color.calculateContrastRatio._flattenedFg.length; i++)
-        WebInspector.Color.calculateContrastRatio._flattenedFg[i] = 0;
+    for (var i = 0; i < WebInspector.Color.calculateContrastRatio._blendedFg.length; i++)
+        WebInspector.Color.calculateContrastRatio._blendedFg[i] = 0;
 
     return contrastRatio;
 }
 
-WebInspector.Color.calculateContrastRatio._flattenedFg = [0, 0, 0, 0];
+WebInspector.Color.calculateContrastRatio._blendedFg = [0, 0, 0, 0];
+
+/**
+ * Compute a desired luminance given a given luminance and a desired contrast
+ * ratio.
+ * @param {number} luminance The given luminance.
+ * @param {number} contrast The desired contrast ratio.
+ * @param {boolean} lighter Whether the desired luminance is lighter or darker
+ * than the given luminance. If no luminance can be found which meets this
+ * requirement, a luminance which meets the inverse requirement will be
+ * returned.
+ * @return {number} The desired luminance.
+ */
+WebInspector.Color.desiredLuminance = function(luminance, contrast, lighter)
+{
+    function computeLuminance()
+    {
+        if (lighter)
+            return (luminance + 0.05) * contrast - 0.05;
+        else
+            return (luminance + 0.05) / contrast - 0.05;
+    }
+    var desiredLuminance = computeLuminance();
+    if (desiredLuminance < 0 || desiredLuminance > 1) {
+        lighter = !lighter;
+        desiredLuminance = computeLuminance();
+    }
+    return desiredLuminance;
+};
+
 
 WebInspector.Color.Nicknames = {
     "aliceblue":          [240,248,255],
@@ -767,4 +815,27 @@ WebInspector.Color.PageHighlight = {
     EventTarget: WebInspector.Color.fromRGBA([255, 196, 196, .66]),
     Shape: WebInspector.Color.fromRGBA([96, 82, 177, 0.8]),
     ShapeMargin: WebInspector.Color.fromRGBA([96, 82, 127, .6])
+}
+
+/**
+ * @param {!WebInspector.Color} color
+ * @return {!WebInspector.Color.Format}
+ */
+WebInspector.Color.detectColorFormat = function(color)
+{
+    const cf = WebInspector.Color.Format;
+    var format;
+    var formatSetting = WebInspector.moduleSetting("colorFormat").get();
+    if (formatSetting === cf.Original)
+        format = cf.Original;
+    else if (formatSetting === cf.RGB)
+        format = (color.hasAlpha() ? cf.RGBA : cf.RGB);
+    else if (formatSetting === cf.HSL)
+        format = (color.hasAlpha() ? cf.HSLA : cf.HSL);
+    else if (formatSetting === cf.HEX)
+        format = color.detectHEXFormat();
+    else
+        format = cf.RGBA;
+
+    return format;
 }

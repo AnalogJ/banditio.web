@@ -33,13 +33,17 @@ InspectorFrontendHostAPI.Events = {
     ContextMenuCleared: "contextMenuCleared",
     ContextMenuItemSelected: "contextMenuItemSelected",
     DeviceCountUpdated: "deviceCountUpdated",
+    DevicesDiscoveryConfigChanged: "devicesDiscoveryConfigChanged",
+    DevicesPortForwardingStatusChanged: "devicesPortForwardingStatusChanged",
     DevicesUpdated: "devicesUpdated",
     DispatchMessage: "dispatchMessage",
     DispatchMessageChunk: "dispatchMessageChunk",
     EnterInspectElementMode: "enterInspectElementMode",
+    EvaluateForTestInFrontend: "evaluateForTestInFrontend",
     FileSystemsLoaded: "fileSystemsLoaded",
     FileSystemRemoved: "fileSystemRemoved",
     FileSystemAdded: "fileSystemAdded",
+    FileSystemFilesChanged: "fileSystemFilesChanged",
     IndexingTotalWorkCalculated: "indexingTotalWorkCalculated",
     IndexingWorked: "indexingWorked",
     IndexingDone: "indexingDone",
@@ -50,7 +54,7 @@ InspectorFrontendHostAPI.Events = {
     SearchCompleted: "searchCompleted",
     SetInspectedTabId: "setInspectedTabId",
     SetUseSoftMenu: "setUseSoftMenu",
-    ShowConsole: "showConsole"
+    ShowPanel: "showPanel"
 }
 
 InspectorFrontendHostAPI.EventDescriptors = [
@@ -60,13 +64,17 @@ InspectorFrontendHostAPI.EventDescriptors = [
     [InspectorFrontendHostAPI.Events.ContextMenuCleared, []],
     [InspectorFrontendHostAPI.Events.ContextMenuItemSelected, ["id"]],
     [InspectorFrontendHostAPI.Events.DeviceCountUpdated, ["count"]],
+    [InspectorFrontendHostAPI.Events.DevicesDiscoveryConfigChanged, ["discoverUsbDevices", "portForwardingEnabled", "portForwardingConfig"]],
+    [InspectorFrontendHostAPI.Events.DevicesPortForwardingStatusChanged, ["status"]],
     [InspectorFrontendHostAPI.Events.DevicesUpdated, ["devices"]],
     [InspectorFrontendHostAPI.Events.DispatchMessage, ["messageObject"]],
     [InspectorFrontendHostAPI.Events.DispatchMessageChunk, ["messageChunk", "messageSize"]],
     [InspectorFrontendHostAPI.Events.EnterInspectElementMode, []],
+    [InspectorFrontendHostAPI.Events.EvaluateForTestInFrontend, ["callId", "script"]],
     [InspectorFrontendHostAPI.Events.FileSystemsLoaded, ["fileSystems"]],
     [InspectorFrontendHostAPI.Events.FileSystemRemoved, ["fileSystemPath"]],
     [InspectorFrontendHostAPI.Events.FileSystemAdded, ["errorMessage", "fileSystem"]],
+    [InspectorFrontendHostAPI.Events.FileSystemFilesChanged, ["paths"]],
     [InspectorFrontendHostAPI.Events.IndexingTotalWorkCalculated, ["requestId", "fileSystemPath", "totalWork"]],
     [InspectorFrontendHostAPI.Events.IndexingWorked, ["requestId", "fileSystemPath", "worked"]],
     [InspectorFrontendHostAPI.Events.IndexingDone, ["requestId", "fileSystemPath"]],
@@ -77,11 +85,14 @@ InspectorFrontendHostAPI.EventDescriptors = [
     [InspectorFrontendHostAPI.Events.SearchCompleted, ["requestId", "fileSystemPath", "files"]],
     [InspectorFrontendHostAPI.Events.SetInspectedTabId, ["tabId"]],
     [InspectorFrontendHostAPI.Events.SetUseSoftMenu, ["useSoftMenu"]],
-    [InspectorFrontendHostAPI.Events.ShowConsole, []]
+    [InspectorFrontendHostAPI.Events.ShowPanel, ["panelName"]]
 ];
 
 InspectorFrontendHostAPI.prototype = {
-    addFileSystem: function() { },
+    /**
+     * @param {string=} fileSystemPath
+     */
+    addFileSystem: function(fileSystemPath) { },
 
     /**
      * @param {string} url
@@ -218,9 +229,28 @@ InspectorFrontendHostAPI.prototype = {
     sendMessageToBackend: function(message) { },
 
     /**
+     * @param {boolean} discoverUsbDevices
+     * @param {boolean} portForwardingEnabled
+     * @param {!Adb.PortForwardingConfig} portForwardingConfig
+     */
+    setDevicesDiscoveryConfig: function(discoverUsbDevices, portForwardingEnabled, portForwardingConfig) { },
+
+    /**
      * @param {boolean} enabled
      */
     setDevicesUpdatesEnabled: function(enabled) { },
+
+    /**
+     * @param {string} pageId
+     * @param {string} action
+     */
+    performActionOnRemotePage: function(pageId, action) { },
+
+    /**
+     * @param {string} browserId
+     * @param {string} url
+     */
+    openRemotePage: function(browserId, url) { },
 
     /**
      * @param {string} origin
@@ -257,6 +287,8 @@ InspectorFrontendHostAPI.prototype = {
      * @return {boolean}
      */
     isUnderTest: function() { },
+
+    readyForTest: function() { },
 
     /**
      * @return {boolean}

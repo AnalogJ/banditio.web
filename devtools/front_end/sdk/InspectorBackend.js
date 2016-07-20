@@ -33,15 +33,14 @@
  */
 function InspectorBackendClass()
 {
-    this._connection = null;
     this._agentPrototypes = {};
     this._dispatcherPrototypes = {};
     this._initialized = false;
-    this._enums = {};
     this._initProtocolAgentsConstructor();
 }
 
 InspectorBackendClass._DevToolsErrorCode = -32000;
+InspectorBackendClass.DevToolsStubErrorCode = -32015;
 
 /**
  * @param {string} error
@@ -53,6 +52,13 @@ InspectorBackendClass.reportProtocolError = function(error, messageObject)
 }
 
 InspectorBackendClass.prototype = {
+    /**
+     * @return {boolean}
+     */
+    isInitialized: function()
+    {
+        return this._initialized;
+    },
 
     _initProtocolAgentsConstructor: function()
     {
@@ -100,30 +106,6 @@ InspectorBackendClass.prototype = {
     },
 
     /**
-     * @return {!InspectorBackendClass.Connection}
-     */
-    connection: function()
-    {
-        if (!this._connection)
-            throw "Main connection was not initialized";
-        return this._connection;
-    },
-
-    /**
-     * @param {!InspectorBackendClass.MainConnection} connection
-     */
-    setConnection: function(connection)
-    {
-        this._connection = connection;
-
-        this._connection.registerAgentsOn(window);
-        for (var type in this._enums) {
-            var domainAndMethod = type.split(".");
-            window[domainAndMethod[0] + "Agent"][domainAndMethod[1]] = this._enums[type];
-        }
-    },
-
-    /**
      * @param {string} domain
      * @return {!InspectorBackendClass.AgentPrototype}
      */
@@ -167,7 +149,12 @@ InspectorBackendClass.prototype = {
      */
     registerEnum: function(type, values)
     {
-        this._enums[type] = values;
+        var domainAndMethod = type.split(".");
+        var agentName = domainAndMethod[0] + "Agent";
+        if (!window[agentName])
+            window[agentName] = {};
+
+        window[agentName][domainAndMethod[1]] = values;
         this._initialized = true;
     },
 
@@ -180,23 +167,6 @@ InspectorBackendClass.prototype = {
         var domain = eventName.split(".")[0];
         this._dispatcherPrototype(domain).registerEvent(eventName, params);
         this._initialized = true;
-    },
-
-    /**
-     * @param {string} jsonUrl
-     */
-    loadFromJSONIfNeeded: function(jsonUrl)
-    {
-        if (this._initialized)
-            return;
-
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", jsonUrl, false);
-        xhr.send(null);
-
-        var schema = JSON.parse(xhr.responseText);
-        var code = InspectorBackendClass._generateCommands(schema);
-        eval(code);
     },
 
     /**
@@ -231,104 +201,6 @@ InspectorBackendClass.prototype = {
 }
 
 /**
- * @param {*} schema
- * @return {string}
- */
-InspectorBackendClass._generateCommands = function(schema) {
-    var jsTypes = { integer: "number", array: "object" };
-    var rawTypes = {};
-    var result = [];
-
-    var domains = schema["domains"] || [];
-    for (var i = 0; i < domains.length; ++i) {
-        var domain = domains[i];
-        for (var j = 0; domain.types && j < domain.types.length; ++j) {
-            var type = domain.types[j];
-            rawTypes[domain.domain + "." + type.id] = jsTypes[type.type] || type.type;
-        }
-    }
-
-    function toUpperCase(groupIndex, group0, group1)
-    {
-        return [group0, group1][groupIndex].toUpperCase();
-    }
-    function generateEnum(enumName, items)
-    {
-        var members = [];
-        for (var m = 0; m < items.length; ++m) {
-            var value = items[m];
-            var name = value.replace(/-(\w)/g, toUpperCase.bind(null, 1)).toTitleCase();
-            name = name.replace(/HTML|XML|WML|API/ig, toUpperCase.bind(null, 0));
-            members.push(name + ": \"" + value +"\"");
-        }
-        return "InspectorBackend.registerEnum(\"" + enumName + "\", {" + members.join(", ") + "});";
-    }
-
-    for (var i = 0; i < domains.length; ++i) {
-        var domain = domains[i];
-
-        var types = domain["types"] || [];
-        for (var j = 0; j < types.length; ++j) {
-            var type = types[j];
-            if ((type["type"] === "string") && type["enum"])
-                result.push(generateEnum(domain.domain + "." + type.id, type["enum"]));
-            else if (type["type"] === "object") {
-                var properties = type["properties"] || [];
-                for (var k = 0; k < properties.length; ++k) {
-                    var property = properties[k];
-                    if ((property["type"] === "string") && property["enum"])
-                        result.push(generateEnum(domain.domain + "." + type.id + property["name"].toTitleCase(), property["enum"]));
-                }
-            }
-        }
-
-        var commands = domain["commands"] || [];
-        for (var j = 0; j < commands.length; ++j) {
-            var command = commands[j];
-            var parameters = command["parameters"];
-            var paramsText = [];
-            for (var k = 0; parameters && k < parameters.length; ++k) {
-                var parameter = parameters[k];
-
-                var type;
-                if (parameter.type)
-                    type = jsTypes[parameter.type] || parameter.type;
-                else {
-                    var ref = parameter["$ref"];
-                    if (ref.indexOf(".") !== -1)
-                        type = rawTypes[ref];
-                    else
-                        type = rawTypes[domain.domain + "." + ref];
-                }
-
-                var text = "{\"name\": \"" + parameter.name + "\", \"type\": \"" + type + "\", \"optional\": " + (parameter.optional ? "true" : "false") + "}";
-                paramsText.push(text);
-            }
-
-            var returnsText = [];
-            var returns = command["returns"] || [];
-            for (var k = 0; k < returns.length; ++k) {
-                var parameter = returns[k];
-                returnsText.push("\"" + parameter.name + "\"");
-            }
-            var hasErrorData = String(Boolean(command.error));
-            result.push("InspectorBackend.registerCommand(\"" + domain.domain + "." + command.name + "\", [" + paramsText.join(", ") + "], [" + returnsText.join(", ") + "], " + hasErrorData + ");");
-        }
-
-        for (var j = 0; domain.events && j < domain.events.length; ++j) {
-            var event = domain.events[j];
-            var paramsText = [];
-            for (var k = 0; event.parameters && k < event.parameters.length; ++k) {
-                var parameter = event.parameters[k];
-                paramsText.push("\"" + parameter.name + "\"");
-            }
-            result.push("InspectorBackend.registerEvent(\"" + domain.domain + "." + event.name + "\", [" + paramsText.join(", ") + "]);");
-        }
-    }
-    return result.join("\n");
-}
-
-/**
  *  @constructor
  *  @extends {WebInspector.Object}
  */
@@ -348,7 +220,6 @@ InspectorBackendClass.Connection.Events = {
 }
 
 InspectorBackendClass.Connection.prototype = {
-
     /**
      * @param {!Object.<string, !InspectorBackendClass.AgentPrototype>} agentPrototypes
      * @param {!Object.<string, !InspectorBackendClass.DispatcherPrototype>} dispatcherPrototypes
@@ -362,16 +233,6 @@ InspectorBackendClass.Connection.prototype = {
 
         for (var domain in dispatcherPrototypes)
             this._dispatchers[domain] = Object.create(dispatcherPrototypes[domain]);
-
-    },
-
-    /**
-     * @param {!Object} object
-     */
-    registerAgentsOn: function(object)
-    {
-        for (var domain in this._agents)
-            object[domain + "Agent"]  = {};
     },
 
     /**
@@ -413,10 +274,8 @@ InspectorBackendClass.Connection.prototype = {
         }
 
         var messageObject = {};
-
         var messageId = this.nextMessageId();
         messageObject.id = messageId;
-
         messageObject.method = method;
         if (params)
             messageObject.params = params;
@@ -459,6 +318,17 @@ InspectorBackendClass.Connection.prototype = {
     },
 
     /**
+     * @param {string} method
+     * @param {?Object} params
+     * @param {?function(...*)} callback
+     */
+    sendRawMessageForTesting: function(method, params, callback)
+    {
+        var domain = method.split(".")[0];
+        this._wrapCallbackAndSendMessageObject(domain, method, params, callback);
+    },
+
+    /**
      * @param {!Object|string} message
      */
     dispatch: function(message)
@@ -487,13 +357,9 @@ InspectorBackendClass.Connection.prototype = {
                 console.log("time-stats: " + callback.methodName + " = " + (processingStartTime - callback.sendRequestTime) + " + " + (Date.now() - processingStartTime));
 
             if (this._scripts && !this._pendingResponsesCount)
-                this.runAfterPendingDispatches();
+                this.deprecatedRunAfterPendingDispatches();
             return;
         } else {
-            if (messageObject.error) {
-                InspectorBackendClass.reportProtocolError("Generic message format error", messageObject);
-                return;
-            }
             var method = messageObject.method.split(".");
             var domainName = method[0];
             if (!(domainName in this._dispatchers)) {
@@ -519,9 +385,9 @@ InspectorBackendClass.Connection.prototype = {
     },
 
     /**
-     * @param {string=} script
+     * @param {function()=} script
      */
-    runAfterPendingDispatches: function(script)
+    deprecatedRunAfterPendingDispatches: function(script)
     {
         if (!this._scripts)
             this._scripts = [];
@@ -534,7 +400,7 @@ InspectorBackendClass.Connection.prototype = {
             if (!this._pendingResponsesCount)
                 this._executeAfterPendingDispatches();
             else
-                this.runAfterPendingDispatches();
+                this.deprecatedRunAfterPendingDispatches();
         }.bind(this), 0);
     },
 
@@ -608,146 +474,6 @@ InspectorBackendClass.Connection.prototype = {
 
 /**
  * @constructor
- * @extends {InspectorBackendClass.Connection}
- */
-InspectorBackendClass.MainConnection = function()
-{
-    InspectorBackendClass.Connection.call(this);
-    InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.DispatchMessage, this._dispatchMessage, this);
-    InspectorFrontendHost.events.addEventListener(InspectorFrontendHostAPI.Events.DispatchMessageChunk, this._dispatchMessageChunk, this);
-}
-
-InspectorBackendClass.MainConnection.prototype = {
-    /**
-     * @override
-     * @param {!Object} messageObject
-     */
-    sendMessage: function(messageObject)
-    {
-        var message = JSON.stringify(messageObject);
-        InspectorFrontendHost.sendMessageToBackend(message);
-    },
-
-    /**
-     * @param {!WebInspector.Event} event
-     */
-    _dispatchMessage: function(event)
-    {
-        this.dispatch(/** @type {string} */ (event.data));
-    },
-
-    /**
-     * @param {!WebInspector.Event} event
-     */
-    _dispatchMessageChunk: function(event)
-    {
-        var messageChunk = /** @type {string} */ (event.data["messageChunk"]);
-        var messageSize = /** @type {number} */ (event.data["messageSize"]);
-        if (messageSize) {
-            this._messageBuffer = "";
-            this._messageSize = messageSize;
-        }
-        this._messageBuffer += messageChunk;
-        if (this._messageBuffer.length === this._messageSize) {
-            this.dispatch(this._messageBuffer);
-            this._messageBuffer = "";
-            this._messageSize = 0;
-        }
-    },
-
-    __proto__: InspectorBackendClass.Connection.prototype
-}
-
-/**
- * @constructor
- * @extends {InspectorBackendClass.Connection}
- * @param {string} url
- * @param {function(!InspectorBackendClass.Connection)} onConnectionReady
- */
-InspectorBackendClass.WebSocketConnection = function(url, onConnectionReady)
-{
-    InspectorBackendClass.Connection.call(this);
-    this._socket = new WebSocket(url);
-    this._socket.onmessage = this._onMessage.bind(this);
-    this._socket.onerror = this._onError.bind(this);
-    this._socket.onopen = onConnectionReady.bind(null, this);
-    this._socket.onclose = this.connectionClosed.bind(this, "websocket_closed");
-}
-
-/**
- * @param {string} url
- * @param {function(!InspectorBackendClass.Connection)} onConnectionReady
- */
-InspectorBackendClass.WebSocketConnection.Create = function(url, onConnectionReady)
-{
-    new InspectorBackendClass.WebSocketConnection(url, onConnectionReady);
-}
-
-InspectorBackendClass.WebSocketConnection.prototype = {
-
-    /**
-     * @param {!MessageEvent} message
-     */
-    _onMessage: function(message)
-    {
-        var data = /** @type {string} */ (message.data);
-        this.dispatch(data);
-    },
-
-    /**
-     * @param {!Event} error
-     */
-    _onError: function(error)
-    {
-        console.error(error);
-    },
-
-    /**
-     * @override
-     * @param {!Object} messageObject
-     */
-    sendMessage: function(messageObject)
-    {
-        var message = JSON.stringify(messageObject);
-        this._socket.send(message);
-    },
-
-    __proto__: InspectorBackendClass.Connection.prototype
-}
-
-
-/**
- * @constructor
- * @extends {InspectorBackendClass.Connection}
- */
-InspectorBackendClass.StubConnection = function()
-{
-    InspectorBackendClass.Connection.call(this);
-}
-
-InspectorBackendClass.StubConnection.prototype = {
-    /**
-     * @override
-     * @param {!Object} messageObject
-     */
-    sendMessage: function(messageObject)
-    {
-        setTimeout(this._echoResponse.bind(this, messageObject), 0);
-    },
-
-    /**
-     * @param {!Object} messageObject
-     */
-    _echoResponse: function(messageObject)
-    {
-        this.dispatch(messageObject);
-    },
-
-    __proto__: InspectorBackendClass.Connection.prototype
-}
-
-/**
- * @constructor
  * @param {string} domain
  */
 InspectorBackendClass.AgentPrototype = function(domain)
@@ -756,14 +482,6 @@ InspectorBackendClass.AgentPrototype = function(domain)
     this._hasErrorData = {};
     this._domain = domain;
     this._suppressErrorLogging = false;
-    this._promisified = domain in InspectorBackendClass.AgentPrototype.PromisifiedDomains;
-}
-
-InspectorBackendClass.AgentPrototype.PromisifiedDomains = {
-    "Accessibility": true,
-    "CSS": true,
-    "Emulation": true,
-    "Profiler": true
 }
 
 InspectorBackendClass.AgentPrototype.prototype = {
@@ -788,25 +506,15 @@ InspectorBackendClass.AgentPrototype.prototype = {
         /**
          * @param {...*} vararg
          * @this {InspectorBackendClass.AgentPrototype}
-         */
-        function sendMessage(vararg)
-        {
-            var params = Array.prototype.slice.call(arguments);
-            InspectorBackendClass.AgentPrototype.prototype._sendMessageToBackend.call(this, domainAndMethod, signature, params);
-        }
-
-        /**
-         * @param {...*} vararg
-         * @this {InspectorBackendClass.AgentPrototype}
          * @return {!Promise.<*>}
          */
         function sendMessagePromise(vararg)
         {
             var params = Array.prototype.slice.call(arguments);
-            return InspectorBackendClass.AgentPrototype.prototype._sendMessageToBackendPromise.call(this, domainAndMethod, signature, replyArgs, params);
+            return InspectorBackendClass.AgentPrototype.prototype._sendMessageToBackendPromise.call(this, domainAndMethod, signature, params);
         }
 
-        this[methodName] = this._promisified ? sendMessagePromise : sendMessage;
+        this[methodName] = sendMessagePromise;
 
         /**
          * @param {...*} vararg
@@ -878,33 +586,9 @@ InspectorBackendClass.AgentPrototype.prototype = {
      * @param {string} method
      * @param {!Array.<!Object>} signature
      * @param {!Array.<*>} args
-     */
-    _sendMessageToBackend: function(method, signature, args)
-    {
-        var errorMessage;
-        /**
-         * @param {string} message
-         */
-        function onError(message)
-        {
-            console.error(message)
-            errorMessage = message;
-        }
-        var callback = (args.length && typeof args.peekLast() === "function") ? args.pop() : null;
-        var params = this._prepareParameters(method, signature, args, !callback, onError);
-        if (errorMessage)
-            return;
-        this._connection._wrapCallbackAndSendMessageObject(this._domain, method, params, callback);
-    },
-
-    /**
-     * @param {string} method
-     * @param {!Array.<!Object>} signature
-     * @param {!Array.<string>} replyArgs
-     * @param {!Array.<*>} args
      * @return {!Promise.<*>}
      */
-    _sendMessageToBackendPromise: function(method, signature, replyArgs, args)
+    _sendMessageToBackendPromise: function(method, signature, args)
     {
         var errorMessage;
         /**
@@ -912,11 +596,11 @@ InspectorBackendClass.AgentPrototype.prototype = {
          */
         function onError(message)
         {
-            console.error(message)
+            console.error(message);
             errorMessage = message;
         }
         var userCallback = (args.length && typeof args.peekLast() === "function") ? args.pop() : null;
-        var params = this._prepareParameters(method, signature, args, false, onError);
+        var params = this._prepareParameters(method, signature, args, !userCallback, onError);
         if (errorMessage)
             return Promise.reject(new Error(errorMessage));
         else
@@ -958,13 +642,13 @@ InspectorBackendClass.AgentPrototype.prototype = {
      */
     dispatchResponse: function(messageObject, methodName, callback)
     {
-        if (messageObject.error && messageObject.error.code !== InspectorBackendClass._DevToolsErrorCode && !InspectorBackendClass.Options.suppressRequestErrors && !this._suppressErrorLogging) {
-            var id = InspectorFrontendHost.isUnderTest() ? "##" : messageObject.id;
-            console.error("Request with id = " + id + " failed. " + JSON.stringify(messageObject.error));
+        if (messageObject.error && messageObject.error.code !== InspectorBackendClass._DevToolsErrorCode && messageObject.error.code !== InspectorBackendClass.DevToolsStubErrorCode && !InspectorBackendClass.Options.suppressRequestErrors && !this._suppressErrorLogging) {
+            var id = InspectorBackendClass.Options.dumpInspectorProtocolMessages ? " with id = " + messageObject.id : "";
+            console.error("Request " + methodName + id + " failed. " + JSON.stringify(messageObject.error));
         }
 
         var argumentsArray = [];
-        argumentsArray[0] = messageObject.error ? messageObject.error.message: null;
+        argumentsArray[0] = messageObject.error ? messageObject.error.message : null;
 
         if (this._hasErrorData[methodName])
             argumentsArray[1] = messageObject.error ? messageObject.error.data : null;

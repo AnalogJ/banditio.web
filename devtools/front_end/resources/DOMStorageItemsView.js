@@ -26,11 +26,11 @@
 
 /**
  * @constructor
- * @extends {WebInspector.VBox}
+ * @extends {WebInspector.VBoxWithToolbarItems}
  */
 WebInspector.DOMStorageItemsView = function(domStorage)
 {
-    WebInspector.VBox.call(this);
+    WebInspector.VBoxWithToolbarItems.call(this);
 
     this.domStorage = domStorage;
 
@@ -51,6 +51,7 @@ WebInspector.DOMStorageItemsView = function(domStorage)
 
 WebInspector.DOMStorageItemsView.prototype = {
     /**
+     * @override
      * @return {!Array.<!WebInspector.ToolbarItem>}
      */
     toolbarItems: function()
@@ -175,7 +176,7 @@ WebInspector.DOMStorageItemsView.prototype = {
             return;
 
         this._dataGrid = this._dataGridForDOMStorageItems(items);
-        this._dataGrid.show(this.element);
+        this._dataGrid.asWidget().show(this.element);
         this.deleteButton.setVisible(this._dataGrid.rootNode().children.length > 1);
     },
 
@@ -216,7 +217,6 @@ WebInspector.DOMStorageItemsView.prototype = {
             return;
 
         this._deleteCallback(this._dataGrid.selectedNode);
-        this._dataGrid.changeNodeAfterDeletion();
     },
 
     _refreshButtonClicked: function(event)
@@ -227,13 +227,13 @@ WebInspector.DOMStorageItemsView.prototype = {
     _editingCallback: function(editingNode, columnIdentifier, oldText, newText)
     {
         var domStorage = this.domStorage;
-        if ("key" === columnIdentifier) {
+        if (columnIdentifier === "key") {
             if (typeof oldText === "string")
                 domStorage.removeItem(oldText);
-            domStorage.setItem(newText, editingNode.data.value || '');
+            domStorage.setItem(newText, editingNode.data.value || "");
             this._removeDupes(editingNode);
         } else
-            domStorage.setItem(editingNode.data.key || '', newText);
+            domStorage.setItem(editingNode.data.key || "", newText);
     },
 
     /**
@@ -259,5 +259,5 @@ WebInspector.DOMStorageItemsView.prototype = {
             this.domStorage.removeItem(node.data.key);
     },
 
-    __proto__: WebInspector.VBox.prototype
+    __proto__: WebInspector.VBoxWithToolbarItems.prototype
 }

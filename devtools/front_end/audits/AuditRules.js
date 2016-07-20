@@ -44,7 +44,7 @@ WebInspector.AuditRules.CacheableResponseCodes =
 
 /**
  * @param {!Array.<!WebInspector.NetworkRequest>} requests
- * @param {?Array.<!WebInspector.resourceTypes>} types
+ * @param {?Array.<!WebInspector.ResourceType>} types
  * @param {boolean} needFullResources
  * @return {!Object.<string, !Array.<!WebInspector.NetworkRequest|string>>}
  */
@@ -61,8 +61,8 @@ WebInspector.AuditRules.getDomainToResourcesMap = function(requests, types, need
         var domain = parsedURL.host;
         var domainResources = domainToResourcesMap[domain];
         if (domainResources === undefined) {
-          domainResources = [];
-          domainToResourcesMap[domain] = domainResources;
+            domainResources = [];
+            domainToResourcesMap[domain] = domainResources;
         }
         domainResources.push(needFullResources ? request : request.url);
     }
@@ -374,7 +374,7 @@ WebInspector.AuditRules.UnusedCssRule.prototype = {
     doRun: function(target, requests, result, callback, progress)
     {
         var domModel = WebInspector.DOMModel.fromTarget(target);
-        var cssModel = WebInspector.CSSStyleModel.fromTarget(target);
+        var cssModel = WebInspector.CSSModel.fromTarget(target);
         if (!domModel || !cssModel) {
             callback(null);
             return;
@@ -856,7 +856,7 @@ WebInspector.AuditRules.ImageDimensionsRule.prototype = {
     doRun: function(target, requests, result, callback, progress)
     {
         var domModel = WebInspector.DOMModel.fromTarget(target);
-        var cssModel = WebInspector.CSSStyleModel.fromTarget(target);
+        var cssModel = WebInspector.CSSModel.fromTarget(target);
         if (!domModel || !cssModel) {
             callback(null);
             return;
@@ -900,21 +900,10 @@ WebInspector.AuditRules.ImageDimensionsRule.prototype = {
             if (styles.computedStyle.get("position") === "absolute")
                 return;
 
-            if (styles.attributesStyle) {
-                var widthFound = !!styles.attributesStyle.getPropertyValue("width");
-                var heightFound = !!styles.attributesStyle.getPropertyValue("height");
-            }
-
-            var inlineStyle = styles.inlineStyle;
-            if (inlineStyle) {
-                if (inlineStyle.getPropertyValue("width") !== "")
-                    widthFound = true;
-                if (inlineStyle.getPropertyValue("height") !== "")
-                    heightFound = true;
-            }
-
-            for (var i = styles.matchedCSSRules.length - 1; i >= 0 && !(widthFound && heightFound); --i) {
-                var style = styles.matchedCSSRules[i].style;
+            var widthFound = false;
+            var heightFound = false;
+            for (var i = 0; !(widthFound && heightFound) && i < styles.nodeStyles.length; ++i) {
+                var style = styles.nodeStyles[i];
                 if (style.getPropertyValue("width") !== "")
                     widthFound = true;
                 if (style.getPropertyValue("height") !== "")
@@ -941,23 +930,13 @@ WebInspector.AuditRules.ImageDimensionsRule.prototype = {
             var targetResult = {};
 
             /**
-             * @param {?WebInspector.CSSStyleModel.InlineStyleResult} inlineStyleResult
-             */
-            function inlineCallback(inlineStyleResult)
-            {
-                if (!inlineStyleResult)
-                    return;
-                targetResult.inlineStyle = inlineStyleResult.inlineStyle;
-                targetResult.attributesStyle = inlineStyleResult.attributesStyle;
-            }
-
-            /**
-             * @param {?WebInspector.CSSStyleModel.MatchedStyleResult} matchedStyleResult
+             * @param {?WebInspector.CSSMatchedStyles} matchedStyleResult
              */
             function matchedCallback(matchedStyleResult)
             {
-                if (matchedStyleResult)
-                    targetResult.matchedCSSRules = matchedStyleResult.matchedCSSRules;
+                if (!matchedStyleResult)
+                    return;
+                targetResult.nodeStyles = matchedStyleResult.nodeStyles();
             }
 
             /**
@@ -974,8 +953,7 @@ WebInspector.AuditRules.ImageDimensionsRule.prototype = {
             var nodePromises = [];
             for (var i = 0; nodeIds && i < nodeIds.length; ++i) {
                 var stylePromises = [
-                    cssModel.matchedStylesPromise(nodeIds[i], false, false).then(matchedCallback),
-                    cssModel.inlineStylesPromise(nodeIds[i]).then(inlineCallback),
+                    cssModel.matchedStylesPromise(nodeIds[i]).then(matchedCallback),
                     cssModel.computedStylePromise(nodeIds[i]).then(computedCallback)
                 ];
                 var nodePromise = Promise.all(stylePromises).then(imageStylesReady.bind(null, nodeIds[i], targetResult));
@@ -1259,7 +1237,7 @@ WebInspector.AuditRules.CSSRuleBase.prototype = {
      */
     doRun: function(target, requests, result, callback, progress)
     {
-        var cssModel = WebInspector.CSSStyleModel.fromTarget(target);
+        var cssModel = WebInspector.CSSModel.fromTarget(target);
         if (!cssModel) {
             callback(null);
             return;
@@ -1371,76 +1349,6 @@ WebInspector.AuditRules.CSSRuleBase.prototype = {
     },
 
     __proto__: WebInspector.AuditRule.prototype
-}
-
-/**
- * @constructor
- * @extends {WebInspector.AuditRules.CSSRuleBase}
- */
-WebInspector.AuditRules.VendorPrefixedCSSProperties = function()
-{
-    WebInspector.AuditRules.CSSRuleBase.call(this, "page-vendorprefixedcss", WebInspector.UIString("Use normal CSS property names instead of vendor-prefixed ones"));
-    this._webkitPrefix = "-webkit-";
-}
-
-WebInspector.AuditRules.VendorPrefixedCSSProperties.supportedProperties = [
-    "background-clip", "background-origin", "background-size",
-    "border-radius", "border-bottom-left-radius", "border-bottom-right-radius", "border-top-left-radius", "border-top-right-radius",
-    "box-shadow", "box-sizing", "opacity", "text-shadow"
-].keySet();
-
-WebInspector.AuditRules.VendorPrefixedCSSProperties.prototype = {
-    /**
-     * @override
-     * @param {!WebInspector.AuditRules.ParsedStyleSheet} styleSheet
-     */
-    didVisitStyleSheet: function(styleSheet)
-    {
-        delete this._styleSheetResult;
-    },
-
-    /**
-     * @override
-     */
-    visitRule: function()
-    {
-        this._mentionedProperties = {};
-    },
-
-    didVisitRule: function()
-    {
-        delete this._ruleResult;
-        delete this._mentionedProperties;
-    },
-
-    /**
-     * @override
-     * @param {!WebInspector.AuditRules.ParsedStyleSheet} styleSheet
-     * @param {!WebInspector.CSSParser.StyleRule} rule
-     * @param {!WebInspector.CSSParser.Property} property
-     * @param {!WebInspector.AuditRuleResult} result
-     */
-    visitProperty: function(styleSheet, rule, property, result)
-    {
-        if (!property.name.startsWith(this._webkitPrefix))
-            return;
-
-        var normalPropertyName = property.name.substring(this._webkitPrefix.length).toLowerCase(); // Start just after the "-webkit-" prefix.
-        if (WebInspector.AuditRules.VendorPrefixedCSSProperties.supportedProperties[normalPropertyName] && !this._mentionedProperties[normalPropertyName]) {
-            this._mentionedProperties[normalPropertyName] = true;
-            if (!this._styleSheetResult)
-                this._styleSheetResult = result.addChild(styleSheet.sourceURL ? WebInspector.linkifyResourceAsNode(styleSheet.sourceURL) : WebInspector.UIString("<unknown>"));
-            if (!this._ruleResult) {
-                var anchor = WebInspector.linkifyURLAsNode(styleSheet.sourceURL, rule.selectorText);
-                anchor.lineNumber = rule.lineNumber;
-                this._ruleResult = this._styleSheetResult.addChild(anchor);
-            }
-            ++result.violationCount;
-            this._ruleResult.addSnippet(WebInspector.UIString("\"%s%s\" is used, but \"%s\" is supported.", this._webkitPrefix, normalPropertyName, normalPropertyName));
-        }
-    },
-
-    __proto__: WebInspector.AuditRules.CSSRuleBase.prototype
 }
 
 /**

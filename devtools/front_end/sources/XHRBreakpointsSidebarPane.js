@@ -21,7 +21,7 @@ WebInspector.XHRBreakpointsSidebarPane = function()
 
     this.emptyElement.addEventListener("contextmenu", this._emptyElementContextMenu.bind(this), true);
 
-    WebInspector.targetManager.observeTargets(this);
+    WebInspector.targetManager.observeTargets(this, WebInspector.Target.Capability.Browser);
 }
 
 WebInspector.XHRBreakpointsSidebarPane.prototype = {
@@ -52,7 +52,7 @@ WebInspector.XHRBreakpointsSidebarPane.prototype = {
         if (event)
             event.consume();
 
-        this.expand();
+        this.expandPane();
 
         var inputElementContainer = createElementWithClass("p", "breakpoint-condition");
         inputElementContainer.textContent = WebInspector.UIString("Break when URL contains:");
@@ -139,12 +139,12 @@ WebInspector.XHRBreakpointsSidebarPane.prototype = {
      */
     _updateBreakpointOnTarget: function(url, enable, target)
     {
-        var targets = target ? [target] : WebInspector.targetManager.targets();
-        for (var i = 0; i < targets.length; ++i) {
+        var targets = target ? [target] : WebInspector.targetManager.targets(WebInspector.Target.Capability.Browser);
+        for (target of targets) {
             if (enable)
-                targets[i].domdebuggerAgent().setXHRBreakpoint(url);
+                target.domdebuggerAgent().setXHRBreakpoint(url);
             else
-                targets[i].domdebuggerAgent().removeXHRBreakpoint(url);
+                target.domdebuggerAgent().removeXHRBreakpoint(url);
         }
     },
 
@@ -217,7 +217,7 @@ WebInspector.XHRBreakpointsSidebarPane.prototype = {
         var element = this._breakpointElements.get(url);
         if (!element)
             return;
-        this.expand();
+        this.expandPane();
         element.classList.add("breakpoint-hit");
         this._highlightedElement = element;
     },

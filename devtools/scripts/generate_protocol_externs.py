@@ -27,7 +27,12 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import re
+try:
+    import json
+except ImportError:
+    import simplejson as json
 
 type_traits = {
     "any": "*",
@@ -41,6 +46,7 @@ type_traits = {
 
 promisified_domains = {
     "Accessibility",
+    "Animation",
     "CSS",
     "Emulation",
     "Profiler"
@@ -87,13 +93,17 @@ def param_type(domain_name, param):
             return "!! Type not found: " + type_id
 
 
-def generate_protocol_externs(output_path, input_path):
-    input_file = open(input_path, "r")
+def load_schema(file, domains):
+    input_file = open(file, "r")
     json_string = input_file.read()
-    json_string = json_string.replace(": true", ": True")
-    json_string = json_string.replace(": false", ": False")
-    json_api = eval(json_string)["domains"]
+    parsed_json = json.loads(json_string)
+    domains.extend(parsed_json["domains"])
 
+
+def generate_protocol_externs(output_path, file1, file2):
+    domains = []
+    load_schema(file1, domains)
+    load_schema(file2, domains)
     output_file = open(output_path, "w")
 
     output_file.write(
@@ -105,14 +115,14 @@ var Protocol = {};
 Protocol.Error;
 """)
 
-    for domain in json_api:
+    for domain in domains:
         domain_name = domain["domain"]
         if "types" in domain:
             for type in domain["types"]:
                 type_id = full_qualified_type_id(domain_name, type["id"])
                 ref_types[type_id] = "%sAgent.%s" % (domain_name, type["id"])
 
-    for domain in json_api:
+    for domain in domains:
         domain_name = domain["domain"]
         promisified = domain_name in promisified_domains
 
@@ -160,7 +170,7 @@ Protocol.Error;
                 output_file.write("/** @param {function(%s):void=} opt_callback */\n" % ", ".join(returns))
                 output_file.write("Protocol.%sAgent.prototype.invoke_%s = function(obj, opt_callback) {}\n" % (domain_name, command["name"]))
 
-        output_file.write("\n\n\nvar %sAgent = {};\n" % domain_name)
+        output_file.write("\n\n\nvar %sAgent = function(){};\n" % domain_name)
 
         if "types" in domain:
             for type in domain["types"]:
@@ -209,7 +219,7 @@ Protocol.Error;
     output_file.write("Protocol.Agents = function(agentsMap){this._agentsMap;};\n")
     output_file.write("/**\n * @param {string} domain\n * @param {!Object} dispatcher\n */\n")
     output_file.write("Protocol.Agents.prototype.registerDispatcher = function(domain, dispatcher){};\n")
-    for domain in json_api:
+    for domain in domains:
         domain_name = domain["domain"]
         uppercase_length = 0
         while uppercase_length < len(domain_name) and domain_name[uppercase_length].isupper():
@@ -228,9 +238,10 @@ if __name__ == "__main__":
     import sys
     import os.path
     program_name = os.path.basename(__file__)
-    if len(sys.argv) < 4 or sys.argv[1] != "-o":
-        sys.stderr.write("Usage: %s -o OUTPUT_FILE INPUT_FILE\n" % program_name)
+    if len(sys.argv) < 5 or sys.argv[1] != "-o":
+        sys.stderr.write("Usage: %s -o OUTPUT_FILE INPUT_FILE_1 INPUT_FILE_2\n" % program_name)
         exit(1)
     output_path = sys.argv[2]
-    input_path = sys.argv[3]
-    generate_protocol_externs(output_path, input_path)
+    input_path_1 = sys.argv[3]
+    input_path_2 = sys.argv[4]
+    generate_protocol_externs(output_path, input_path_1, input_path_2)

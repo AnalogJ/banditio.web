@@ -34,12 +34,15 @@
  * @param {number} startColumn
  * @param {number} endLine
  * @param {number} endColumn
+ * @param {!RuntimeAgent.ExecutionContextId} executionContextId
+ * @param {string} hash
  * @param {boolean} isContentScript
  * @param {boolean} isInternalScript
+ * @param {boolean} isLiveEdit
  * @param {string=} sourceMapURL
  * @param {boolean=} hasSourceURL
  */
-WebInspector.Script = function(debuggerModel, scriptId, sourceURL, startLine, startColumn, endLine, endColumn, isContentScript, isInternalScript, sourceMapURL, hasSourceURL)
+WebInspector.Script = function(debuggerModel, scriptId, sourceURL, startLine, startColumn, endLine, endColumn, executionContextId, hash, isContentScript, isInternalScript, isLiveEdit, sourceMapURL, hasSourceURL)
 {
     WebInspector.SDKObject.call(this, debuggerModel.target());
     this.debuggerModel = debuggerModel;
@@ -49,18 +52,21 @@ WebInspector.Script = function(debuggerModel, scriptId, sourceURL, startLine, st
     this.columnOffset = startColumn;
     this.endLine = endLine;
     this.endColumn = endColumn;
+    this._executionContextId = executionContextId;
+    this.hash = hash;
     this._isContentScript = isContentScript;
     this._isInternalScript = isInternalScript;
+    this._isLiveEdit = isLiveEdit;
     this.sourceMapURL = sourceMapURL;
     this.hasSourceURL = hasSourceURL;
 }
 
 WebInspector.Script.Events = {
     ScriptEdited: "ScriptEdited",
-    SourceMapURLAdded: "SourceMapURLAdded",
+    SourceMapURLAdded: "SourceMapURLAdded"
 }
 
-WebInspector.Script.sourceURLRegex = /\n[\040\t]*\/\/[@#]\ssourceURL=\s*(\S*?)\s*$/mg;
+WebInspector.Script.sourceURLRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;
 
 /**
  * @param {string} source
@@ -68,7 +74,19 @@ WebInspector.Script.sourceURLRegex = /\n[\040\t]*\/\/[@#]\ssourceURL=\s*(\S*?)\s
  */
 WebInspector.Script._trimSourceURLComment = function(source)
 {
-    return source.replace(WebInspector.Script.sourceURLRegex, "");
+    var sourceURLIndex = source.lastIndexOf("//# sourceURL=");
+    if (sourceURLIndex === -1) {
+        sourceURLIndex = source.lastIndexOf("//@ sourceURL=");
+        if (sourceURLIndex === -1)
+            return source;
+    }
+    var sourceURLLineIndex = source.lastIndexOf("\n", sourceURLIndex);
+    if (sourceURLLineIndex === -1)
+        return source;
+    var sourceURLLine = source.substr(sourceURLLineIndex + 1).split("\n", 1)[0];
+    if (sourceURLLine.search(WebInspector.Script.sourceURLRegex) === -1)
+        return source;
+    return source.substr(0, sourceURLLineIndex) + source.substr(sourceURLLineIndex + sourceURLLine.length + 1);
 }
 
 
@@ -87,6 +105,22 @@ WebInspector.Script.prototype = {
     isInternalScript: function()
     {
         return this._isInternalScript;
+    },
+
+    /**
+     * @return {?WebInspector.ExecutionContext}
+     */
+    executionContext: function()
+    {
+        return this.target().runtimeModel.executionContext(this._executionContextId);
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isLiveEdit: function()
+    {
+        return this._isLiveEdit;
     },
 
     /**
@@ -109,14 +143,19 @@ WebInspector.Script.prototype = {
 
     /**
      * @override
-     * @param {function(?string)} callback
+     * @return {!Promise<?string>}
      */
-    requestContent: function(callback)
+    requestContent: function()
     {
-        if (this._source) {
-            callback(this._source);
-            return;
-        }
+        if (this._source)
+            return Promise.resolve(this._source);
+        if (!this.scriptId)
+            return Promise.resolve(/** @type {?string} */(""));
+
+        var callback;
+        var promise = new Promise(fulfill => callback = fulfill);
+        this.target().debuggerAgent().getScriptSource(this.scriptId, didGetScriptSource.bind(this));
+        return promise;
 
         /**
          * @this {WebInspector.Script}
@@ -128,11 +167,6 @@ WebInspector.Script.prototype = {
             this._source = WebInspector.Script._trimSourceURLComment(error ? "" : source);
             callback(this._source);
         }
-        if (this.scriptId) {
-            // Script failed to parse.
-            this.target().debuggerAgent().getScriptSource(this.scriptId, didGetScriptSource.bind(this));
-        } else
-            callback("");
     },
 
     /**
@@ -184,26 +218,24 @@ WebInspector.Script.prototype = {
 
     /**
      * @param {string} newSource
-     * @param {function(?Protocol.Error, !DebuggerAgent.SetScriptSourceError=, !Array.<!DebuggerAgent.CallFrame>=, !DebuggerAgent.StackTrace=, boolean=)} callback
+     * @param {function(?Protocol.Error, !RuntimeAgent.ExceptionDetails=, !Array.<!DebuggerAgent.CallFrame>=, !RuntimeAgent.StackTrace=, boolean=)} callback
      */
     editSource: function(newSource, callback)
     {
         /**
          * @this {WebInspector.Script}
          * @param {?Protocol.Error} error
-         * @param {!DebuggerAgent.SetScriptSourceError=} errorData
          * @param {!Array.<!DebuggerAgent.CallFrame>=} callFrames
          * @param {boolean=} stackChanged
-         * @param {!DebuggerAgent.StackTrace=} asyncStackTrace
+         * @param {!RuntimeAgent.StackTrace=} asyncStackTrace
+         * @param {!RuntimeAgent.ExceptionDetails=} compileError
          */
-        function didEditScriptSource(error, errorData, callFrames, stackChanged, asyncStackTrace)
+        function didEditScriptSource(error, callFrames, stackChanged, asyncStackTrace, compileError)
         {
-            if (!error)
+            if (!error && !compileError)
                 this._source = newSource;
             var needsStepIn = !!stackChanged;
-            callback(error, errorData, callFrames, asyncStackTrace, needsStepIn);
-            if (!error)
-                this.dispatchEventToListeners(WebInspector.Script.Events.ScriptEdited, newSource);
+            callback(error, compileError, callFrames, asyncStackTrace, needsStepIn);
         }
 
         newSource = WebInspector.Script._trimSourceURLComment(newSource);
@@ -260,6 +292,34 @@ WebInspector.Script.prototype = {
     isInlineScriptWithSourceURL: function()
     {
         return !!this.hasSourceURL && this.isInlineScript();
+    },
+
+    /**
+     * @param {!Array<!DebuggerAgent.ScriptPosition>} positions
+     * @return {!Promise<boolean>}
+     */
+    setBlackboxedRanges: function(positions)
+    {
+        return new Promise(setBlackboxedRanges.bind(this));
+
+        /**
+         * @param {function(?)} fulfill
+         * @param {function(*)} reject
+         * @this {WebInspector.Script}
+         */
+        function setBlackboxedRanges(fulfill, reject)
+        {
+            this.target().debuggerAgent().setBlackboxedRanges(this.scriptId, positions, callback);
+            /**
+             * @param {?Protocol.Error} error
+             */
+            function callback(error)
+            {
+                if (error)
+                    console.error(error);
+                fulfill(!error);
+            }
+        }
     },
 
     __proto__: WebInspector.SDKObject.prototype

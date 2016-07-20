@@ -51,8 +51,11 @@ WebInspector.WatchExpressionsSidebarPane = function()
 
     this._bodyElement = this.element.createChild("div", "vbox watch-expressions");
     this._bodyElement.addEventListener("contextmenu", this._contextMenu.bind(this), false);
+    this._expandController = new WebInspector.ObjectPropertiesSectionExpandController();
 
     WebInspector.context.addFlavorChangeListener(WebInspector.ExecutionContext, this.refreshExpressions, this);
+
+    this._linkifier = new WebInspector.Linkifier();
 }
 
 WebInspector.WatchExpressionsSidebarPane.prototype = {
@@ -72,7 +75,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
      */
     addExpression: function(expressionString)
     {
-        this.expand();
+        this.expandPane();
         if (this._requiresUpdate) {
             this._rebuildWatchExpressions();
             delete this._requiresUpdate;
@@ -84,7 +87,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
     expandIfNecessary: function()
     {
         if (this._watchExpressionsSetting.get().length)
-            this.expand();
+            this.expandPane();
     },
 
     _saveExpressions: function()
@@ -113,7 +116,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
     {
         if (event)
             event.consume(true);
-        this.expand();
+        this.expandPane();
         this._createWatchExpression(null).startEditing();
     },
 
@@ -128,6 +131,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
 
     _rebuildWatchExpressions: function()
     {
+        this._linkifier.reset();
         this._bodyElement.removeChildren();
         this._watchExpressions = [];
         this._emptyElement = this._bodyElement.createChild("div", "info");
@@ -149,7 +153,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
     _createWatchExpression: function(expression)
     {
         this._emptyElement.classList.add("hidden");
-        var watchExpression = new WebInspector.WatchExpression(expression);
+        var watchExpression = new WebInspector.WatchExpression(expression, this._expandController, this._linkifier);
         watchExpression.addEventListener(WebInspector.WatchExpression.Events.ExpressionUpdated, this._watchExpressionUpdated.bind(this));
         this._bodyElement.appendChild(watchExpression.element());
         this._watchExpressions.push(watchExpression);
@@ -189,7 +193,7 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
     {
         var isEditing = false;
         for (var watchExpression of this._watchExpressions)
-           isEditing |=  watchExpression.isEditing();
+            isEditing |=  watchExpression.isEditing();
 
         if (!isEditing)
             contextMenu.appendItem(WebInspector.UIString.capitalize("Add ^watch ^expression"), this._addButtonClicked.bind(this));
@@ -216,12 +220,16 @@ WebInspector.WatchExpressionsSidebarPane.prototype = {
  * @constructor
  * @extends {WebInspector.Object}
  * @param {?string} expression
+ * @param {!WebInspector.ObjectPropertiesSectionExpandController} expandController
+ * @param {!WebInspector.Linkifier} linkifier
  */
-WebInspector.WatchExpression = function(expression)
+WebInspector.WatchExpression = function(expression, expandController, linkifier)
 {
     this._expression = expression;
+    this._expandController = expandController;
     this._element = createElementWithClass("div", "watch-expression monospace");
     this._editing = false;
+    this._linkifier = linkifier;
 
     this._createWatchExpression(null, false);
     this.update();
@@ -255,7 +263,7 @@ WebInspector.WatchExpression.prototype = {
     {
         var currentExecutionContext = WebInspector.context.flavor(WebInspector.ExecutionContext);
         if (currentExecutionContext && this._expression)
-            currentExecutionContext.evaluate(this._expression, WebInspector.WatchExpression._watchObjectGroupId, false, true, false, false, this._createWatchExpression.bind(this));
+            currentExecutionContext.evaluate(this._expression, WebInspector.WatchExpression._watchObjectGroupId, false, true, false, false, false, this._createWatchExpression.bind(this));
     },
 
     startEditing: function()
@@ -313,6 +321,8 @@ WebInspector.WatchExpression.prototype = {
      */
     _updateExpression: function(newExpression)
     {
+        if (this._expression)
+            this._expandController.stopWatchSectionsWithId(this._expression);
         this._expression = newExpression;
         this.update();
         this.dispatchEventToListeners(WebInspector.WatchExpression.Events.ExpressionUpdated);
@@ -335,7 +345,7 @@ WebInspector.WatchExpression.prototype = {
     {
         this._result = result;
 
-        var headerElement= createElementWithClass("div", "watch-expression-header");
+        var headerElement = createElementWithClass("div", "watch-expression-header");
         var deleteButton = headerElement.createChild("button", "watch-expression-delete-button");
         deleteButton.title = WebInspector.UIString("Delete watch expression");
         deleteButton.addEventListener("click", this._deleteWatchExpression.bind(this), false);
@@ -347,7 +357,7 @@ WebInspector.WatchExpression.prototype = {
             titleElement.classList.add("dimmed");
             this._valueElement.textContent = WebInspector.UIString("<not available>");
         } else {
-            this._valueElement = WebInspector.ObjectPropertiesSection.createValueElementWithCustomSupport(result, wasThrown, titleElement);
+            this._valueElement = WebInspector.ObjectPropertiesSection.createValueElementWithCustomSupport(result, wasThrown, titleElement, this._linkifier);
         }
         var separatorElement = createElementWithClass("span", "watch-expressions-separator");
         separatorElement.textContent = ": ";
@@ -356,8 +366,10 @@ WebInspector.WatchExpression.prototype = {
         this._element.removeChildren();
         this._objectPropertiesSection = null;
         if (!wasThrown && result && result.hasChildren && !result.customPreview()) {
-            this._objectPropertiesSection = new WebInspector.ObjectPropertiesSection(result, headerElement);
+            headerElement.classList.add("watch-expression-object-header");
+            this._objectPropertiesSection = new WebInspector.ObjectPropertiesSection(result, headerElement, this._linkifier);
             this._objectPresentationElement = this._objectPropertiesSection.element;
+            this._expandController.watchSection(/** @type {string} */ (this._expression), this._objectPropertiesSection);
             var objectTreeElement = this._objectPropertiesSection.objectTreeElement();
             objectTreeElement.toggleOnClick = false;
             objectTreeElement.listItemElement.addEventListener("click", this._onSectionClick.bind(this), false);
@@ -376,7 +388,7 @@ WebInspector.WatchExpression.prototype = {
     _onSectionClick: function(event)
     {
         event.consume(true);
-        if (event.detail == 1) {
+        if (event.detail === 1) {
             this._preventClickTimeout = setTimeout(handleClick.bind(this), 333);
         } else {
             clearTimeout(this._preventClickTimeout);

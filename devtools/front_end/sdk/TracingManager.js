@@ -52,11 +52,17 @@ WebInspector.TracingManager = function(target)
         name: string,
         args: !Object,
         dur: number,
-        id: number,
+        id: string,
+        bind_id: string,
         s: string
     }}
  */
 WebInspector.TracingManager.EventPayload;
+
+WebInspector.TracingManager.TransferMode = {
+    ReportEvents: "ReportEvents",
+    ReturnAsStream: "ReturnAsStream"
+};
 
 WebInspector.TracingManager.prototype = {
     /**
@@ -98,6 +104,7 @@ WebInspector.TracingManager.prototype = {
         this._eventsRetrieved = 0;
         this._activeClient.tracingComplete();
         this._activeClient = null;
+        this._finishing = false;
     },
 
     /**
@@ -112,12 +119,17 @@ WebInspector.TracingManager.prototype = {
             throw new Error("Tracing is already started");
         var bufferUsageReportingIntervalMs = 500;
         this._activeClient = client;
-        this._target.tracingAgent().start(categoryFilter, options, bufferUsageReportingIntervalMs, callback);
+        this._target.tracingAgent().start(categoryFilter, options, bufferUsageReportingIntervalMs, WebInspector.TracingManager.TransferMode.ReportEvents, callback);
         this._activeClient.tracingStarted();
     },
 
     stop: function()
     {
+        if (!this._activeClient)
+            throw new Error("Tracing is not started");
+        if (this._finishing)
+            throw new Error("Tracing is already being stopped");
+        this._finishing = true;
         this._target.tracingAgent().end();
     }
 }

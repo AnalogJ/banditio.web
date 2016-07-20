@@ -83,21 +83,23 @@ WebInspector.JavaScriptBreakpointsSidebarPane.prototype = {
 
         /**
          * @param {?string} content
+         * @this {WebInspector.JavaScriptBreakpointsSidebarPane}
          */
         function didRequestContent(content)
         {
             var lineNumber = uiLocation.lineNumber
             var columnNumber = uiLocation.columnNumber;
-            var contentString = new String(content);
-            if (lineNumber < contentString.lineCount()) {
-                var lineText = contentString.lineAt(lineNumber);
+            var text = new WebInspector.Text(content || "");
+            if (lineNumber < text.lineCount()) {
+                var lineText = text.lineAt(lineNumber);
                 var maxSnippetLength = 200;
                 var snippetStartIndex = columnNumber > 100 ? columnNumber : 0;
                 snippetElement.textContent = lineText.substr(snippetStartIndex).trimEnd(maxSnippetLength);
             }
+            this.didReceiveBreakpointLineForTest(uiLocation.uiSourceCode);
         }
 
-        uiLocation.uiSourceCode.requestContent(didRequestContent);
+        uiLocation.uiSourceCode.requestContent().then(didRequestContent.bind(this));
 
         element._data = uiLocation;
         var currentElement = this.listElement.firstChild;
@@ -111,7 +113,14 @@ WebInspector.JavaScriptBreakpointsSidebarPane.prototype = {
         var breakpointItem = { element: element, checkbox: checkboxLabel.checkboxElement };
         this._items.set(breakpoint, breakpointItem);
 
-        this.expand();
+        this.expandPane();
+    },
+
+    /**
+     * @param {!WebInspector.UISourceCode} uiSourceCode
+     */
+    didReceiveBreakpointLineForTest: function(uiSourceCode)
+    {
     },
 
     /**
@@ -196,7 +205,7 @@ WebInspector.JavaScriptBreakpointsSidebarPane.prototype = {
 
             contextMenu.appendSeparator();
 
-            contextMenu.appendItem(enableTitle, this._breakpointManager.toggleAllBreakpoints.bind(this._breakpointManager, true), !(enableBreakpointCount != breakpoints.length));
+            contextMenu.appendItem(enableTitle, this._breakpointManager.toggleAllBreakpoints.bind(this._breakpointManager, true), !(enableBreakpointCount !== breakpoints.length));
             contextMenu.appendItem(disableTitle, this._breakpointManager.toggleAllBreakpoints.bind(this._breakpointManager, false), !(enableBreakpointCount > 1));
         }
 
@@ -234,7 +243,7 @@ WebInspector.JavaScriptBreakpointsSidebarPane.prototype = {
 
     _compareBreakpoints: function(b1, b2)
     {
-        return this._compare(b1.uiSourceCode.originURL(), b2.uiSourceCode.originURL()) || this._compare(b1.lineNumber, b2.lineNumber);
+        return this._compare(b1.uiSourceCode.url(), b2.uiSourceCode.url()) || this._compare(b1.lineNumber, b2.lineNumber);
     },
 
     reset: function()

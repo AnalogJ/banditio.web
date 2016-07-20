@@ -6,55 +6,40 @@
  * @constructor
  * @extends {WebInspector.VBox}
  * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
  */
-WebInspector.TimelineTreeView = function(model)
+WebInspector.TimelineTreeView = function(model, filters)
 {
     WebInspector.VBox.call(this);
     this.element.classList.add("timeline-tree-view");
 
     this._model = model;
+    this._linkifier = new WebInspector.Linkifier();
+
+    this._filters = filters.slice();
+
     var columns = [];
-    columns.push({id: "self", title: WebInspector.UIString("Self Time"), width: "120px", sort: WebInspector.DataGrid.Order.Descending, sortable: true});
-    columns.push({id: "total", title: WebInspector.UIString("Total Time"), width: "120px", sortable: true});
-    columns.push({id: "activity", title: WebInspector.UIString("Activity"), disclosure: true, sortable: true});
+    this._populateColumns(columns);
 
-    var nonessentialEvents = [
-        WebInspector.TimelineModel.RecordType.EventDispatch,
-        WebInspector.TimelineModel.RecordType.FunctionCall,
-        WebInspector.TimelineModel.RecordType.TimerFire
-    ];
-    this._filters = [
-        WebInspector.TimelineUIUtils.hiddenEventsFilter(),
-        new WebInspector.ExclusiveTraceEventNameFilter(nonessentialEvents),
-        new WebInspector.ExcludeTopLevelFilter()
-    ];
+    var mainView = new WebInspector.VBox();
+    this._populateToolbar(mainView.element);
+    this._dataGrid = new WebInspector.SortableDataGrid(columns);
+    this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SortingChanged, this._sortingChanged, this);
+    this._dataGrid.element.addEventListener("mousemove", this._onMouseMove.bind(this), true)
+    this._dataGrid.setResizeMethod(WebInspector.DataGrid.ResizeMethod.Last);
+    this._dataGrid.asWidget().show(mainView.element);
 
-    this._groupBySetting = WebInspector.settings.createSetting("timelineTreeGroupBy", WebInspector.TimelineTreeView.GroupBy.Domain);
+    this._splitWidget = new WebInspector.SplitWidget(true, true, "timelineTreeViewDetailsSplitWidget");
+    this._splitWidget.show(this.element);
+    this._splitWidget.setMainWidget(mainView);
 
-    this.dataGrid = new WebInspector.SortableDataGrid(columns);
-    this.dataGrid.addEventListener(WebInspector.DataGrid.Events.SortingChanged, this._sortingChanged, this);
+    this._detailsView = new WebInspector.VBox();
+    this._detailsView.element.classList.add("timeline-details-view", "timeline-details-view-body");
+    this._splitWidget.setSidebarWidget(this._detailsView);
+    this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SelectedNode, this._updateDetailsForSelection, this);
 
-    this._createToolbar();
-
-    this.dataGrid.show(this.element);
-}
-
-/**
- * @enum {string}
- */
-WebInspector.TimelineTreeView.Mode = {
-    TopDown: "TopDown",
-    BottomUp: "BottomUp"
-}
-
-/**
- * @enum {string}
- */
-WebInspector.TimelineTreeView.GroupBy = {
-    None: "None",
-    Domain: "Domain",
-    Subdomain: "Subdomain",
-    URL: "URL"
+    /** @type {?WebInspector.TimelineProfileTree.Node|undefined} */
+    this._lastSelectedNode;
 }
 
 WebInspector.TimelineTreeView.prototype = {
@@ -63,60 +48,83 @@ WebInspector.TimelineTreeView.prototype = {
      */
     updateContents: function(selection)
     {
-        this._startTime = selection.startTime();
-        this._endTime = selection.endTime();
+        this.setRange(selection.startTime(), selection.endTime());
+    },
+
+    /**
+     * @param {number} startTime
+     * @param {number} endTime
+     */
+    setRange: function(startTime, endTime)
+    {
+        this._startTime = startTime;
+        this._endTime = endTime;
         this._refreshTree();
     },
 
-    _createToolbar: function()
+    /**
+     * @return {boolean}
+     */
+    _exposePercentages: function()
     {
-        var panelToolbar = new WebInspector.Toolbar(this.element);
-        panelToolbar.appendToolbarItem(new WebInspector.ToolbarText(WebInspector.UIString("View")));
+        return false;
+    },
 
-        this._modeCombobox = new WebInspector.ToolbarComboBox(this._onTreeModeChanged.bind(this));
-        this._modeCombobox.addOption(this._modeCombobox.createOption(WebInspector.UIString("Costly Functions"), "", WebInspector.TimelineTreeView.Mode.BottomUp));
-        this._modeCombobox.addOption(this._modeCombobox.createOption(WebInspector.UIString("Call Tree"), "", WebInspector.TimelineTreeView.Mode.TopDown));
-        panelToolbar.appendToolbarItem(this._modeCombobox);
+    /**
+     * @param {!Element} parent
+     */
+    _populateToolbar: function(parent) { },
 
-        this._groupByCombobox = new WebInspector.ToolbarComboBox(this._onGroupByChanged.bind(this));
-        /**
-         * @param {string} name
-         * @param {string} id
-         * @this {WebInspector.TimelineTreeView}
-         */
-        function addGroupingOption(name, id)
-        {
-            var option = this._groupByCombobox.createOption(name, "", id);
-            this._groupByCombobox.addOption(option);
-            if (id === this._groupBySetting.get())
-                this._groupByCombobox.select(option);
+    /**
+     * @param {?WebInspector.TimelineProfileTree.Node} node
+     */
+    _onHover: function(node) { },
+
+    /**
+     * @param {!WebInspector.TracingModel.Event} event
+     * @return {?Element}
+     */
+    _linkifyLocation: function(event)
+    {
+        var target = this._model.targetByEvent(event);
+        if (!target)
+            return null;
+        var frame = WebInspector.TimelineProfileTree.eventStackFrame(event);
+        if (!frame)
+            return null;
+        return event.name === WebInspector.TimelineModel.RecordType.JSFrame
+            ? this._linkifier.maybeLinkifyConsoleCallFrame(target, frame)
+            : this._linkifier.maybeLinkifyConsoleCallFrameForTracing(target, frame);
+    },
+
+    /**
+     * @param {!WebInspector.TimelineProfileTree.Node} treeNode
+     * @param {boolean} suppressSelectedEvent
+     */
+    selectProfileNode: function(treeNode, suppressSelectedEvent)
+    {
+        var pathToRoot = [];
+        for (var node = treeNode; node; node = node.parent)
+            pathToRoot.push(node);
+        for (var i = pathToRoot.length - 1; i > 0; --i) {
+            var gridNode = this._dataGridNodeForTreeNode(pathToRoot[i]);
+            if (gridNode && gridNode.dataGrid)
+                gridNode.expand();
         }
-        addGroupingOption.call(this, WebInspector.UIString("No Grouping"), WebInspector.TimelineTreeView.GroupBy.None);
-        addGroupingOption.call(this, WebInspector.UIString("Group by Domain"), WebInspector.TimelineTreeView.GroupBy.Domain);
-        addGroupingOption.call(this, WebInspector.UIString("Group by Subdomain"), WebInspector.TimelineTreeView.GroupBy.Subdomain);
-        addGroupingOption.call(this, WebInspector.UIString("Group by URL"), WebInspector.TimelineTreeView.GroupBy.URL);
-        panelToolbar.appendToolbarItem(this._groupByCombobox);
-    },
-
-    _onTreeModeChanged: function()
-    {
-        this._refreshTree();
-    },
-
-    _onGroupByChanged: function()
-    {
-        this._groupBySetting.set(this._groupByCombobox.selectedOption().value);
-        this._refreshTree();
+        var gridNode = this._dataGridNodeForTreeNode(treeNode);
+        if (gridNode.dataGrid) {
+            gridNode.reveal();
+            gridNode.select(suppressSelectedEvent);
+        }
     },
 
     _refreshTree: function()
     {
-        this.dataGrid.rootNode().removeChildren();
-        var topDown = WebInspector.TimelineModel.buildTopDownTree(
-            this._model.mainThreadEvents(), this._startTime, this._endTime, this._filters, WebInspector.TimelineTreeView.eventId);
-        var isTopDown = this._modeCombobox.selectedOption().value === WebInspector.TimelineTreeView.Mode.TopDown;
-        var tree = isTopDown ? this._preformTopDownTreeGrouping(topDown) : this._buildBottomUpTree(topDown);
-        this.dataGrid.markColumnAsSortedBy(isTopDown ? "total" : "self", WebInspector.DataGrid.Order.Descending);
+        this._linkifier.reset();
+        this._dataGrid.rootNode().removeChildren();
+        var tree = this._buildTree();
+        if (!tree.children)
+            return;
         var maxSelfTime = 0;
         var maxTotalTime = 0;
         for (var child of tree.children.values()) {
@@ -125,146 +133,150 @@ WebInspector.TimelineTreeView.prototype = {
         }
         for (var child of tree.children.values()) {
             // Exclude the idle time off the total calculation.
-            var gridNode = new WebInspector.TimelineTreeView.GridNode(child, topDown.totalTime, maxSelfTime, maxTotalTime);
-            this.dataGrid.insertChild(gridNode);
+            var gridNode = new WebInspector.TimelineTreeView.TreeGridNode(child, tree.totalTime, maxSelfTime, maxTotalTime, this);
+            this._dataGrid.insertChild(gridNode);
         }
         this._sortingChanged();
+        this._updateDetailsForSelection();
     },
 
     /**
-     * @param {!WebInspector.TimelineModel.ProfileTreeNode} topDownTree
-     * @return {!WebInspector.TimelineModel.ProfileTreeNode}
+     * @return {!WebInspector.TimelineProfileTree.Node}
      */
-    _preformTopDownTreeGrouping: function(topDownTree)
+    _buildTree: function()
     {
-        var nodeToGroupId = this._nodeToGroupIdFunction();
-        if (nodeToGroupId) {
-            this._groupNodes = new Map();
-            for (var node of topDownTree.children.values()) {
-                var groupNode = this._nodeToGroupNode(nodeToGroupId, node);
-                groupNode.selfTime += node.selfTime;
-                groupNode.totalTime += node.totalTime;
-                groupNode.children.set(node.id, node);
-            }
-            topDownTree.children = this._groupNodes;
-            this._groupNodes = null;
-        }
-        return topDownTree;
+        throw new Error("Not Implemented");
     },
 
     /**
-     * @param {!WebInspector.TimelineModel.ProfileTreeNode} topDownTree
-     * @return {!WebInspector.TimelineModel.ProfileTreeNode}
+     * @param {function(!WebInspector.TracingModel.Event):(string|symbol)=} eventIdCallback
+     * @return {!WebInspector.TimelineProfileTree.Node}
      */
-    _buildBottomUpTree: function(topDownTree)
+    _buildTopDownTree: function(eventIdCallback)
     {
-        this._groupNodes = new Map();
-        var nodeToGroupId = this._nodeToGroupIdFunction();
-        var nodeToGroupNode = nodeToGroupId ? this._nodeToGroupNode.bind(this, nodeToGroupId) : null;
-        var bottomUpRoot = WebInspector.TimelineModel.buildBottomUpTree(topDownTree, nodeToGroupNode);
-        for (var group of this._groupNodes)
-            bottomUpRoot.children.set(group[0], group[1]);
-        return bottomUpRoot;
+        return WebInspector.TimelineProfileTree.buildTopDown(this._model.mainThreadEvents(), this._filters, this._startTime, this._endTime, eventIdCallback)
     },
 
     /**
-     * @return {?function(!WebInspector.TimelineModel.ProfileTreeNode):string}
+     * @param {!Array<!WebInspector.DataGrid.ColumnDescriptor>} columns
      */
-    _nodeToGroupIdFunction: function()
+    _populateColumns: function(columns)
     {
-        /**
-         * @param {!WebInspector.TimelineModel.ProfileTreeNode} node
-         * @return {string}
-         */
-        function groupByURL(node)
-        {
-            return WebInspector.TimelineTreeView.eventURL(node.event) || "";
-        }
-
-        /**
-         * @param {boolean} groupSubdomains
-         * @param {!WebInspector.TimelineModel.ProfileTreeNode} node
-         * @return {string}
-         */
-        function groupByDomain(groupSubdomains, node)
-        {
-            var url = WebInspector.TimelineTreeView.eventURL(node.event) || "";
-            if (url.startsWith("extensions::"))
-                return groupSubdomains ? WebInspector.UIString("Chrome Extensions Overhead") : url;
-            var parsedURL = url.asParsedURL();
-            if (!parsedURL)
-                return "";
-            if (parsedURL.scheme === "chrome-extension") {
-                url = parsedURL.scheme + "://" + parsedURL.host;
-                var displayName = executionContextNamesByOrigin.get(url);
-                return displayName ? WebInspector.UIString("Chrome Extension: %s", displayName) : url;
-            }
-            if (!groupSubdomains)
-                return parsedURL.host;
-            if (/^[.0-9]+$/.test(parsedURL.host))
-                return parsedURL.host;
-            var domainMatch = /([^.]*\.)?[^.]*$/.exec(parsedURL.host);
-            return domainMatch && domainMatch[0] || "";
-        }
-
-        var executionContextNamesByOrigin = new Map();
-        var mainTarget = WebInspector.targetManager.mainTarget();
-        if (mainTarget) {
-            for (var context of mainTarget.runtimeModel.executionContexts())
-                executionContextNamesByOrigin.set(context.origin, context.name);
-        }
-        var groupByMap = /** @type {!Map<!WebInspector.TimelineTreeView.GroupBy,?function(!WebInspector.TimelineModel.ProfileTreeNode):string>} */ (new Map([
-            [WebInspector.TimelineTreeView.GroupBy.None, null],
-            [WebInspector.TimelineTreeView.GroupBy.Subdomain, groupByDomain.bind(null, false)],
-            [WebInspector.TimelineTreeView.GroupBy.Domain, groupByDomain.bind(null, true)],
-            [WebInspector.TimelineTreeView.GroupBy.URL, groupByURL]
-        ]));
-        return groupByMap.get(this._groupBySetting.get()) || null;
-    },
-
-    /**
-     * @param {function(!WebInspector.TimelineModel.ProfileTreeNode):string} nodeToGroupId
-     * @param {!WebInspector.TimelineModel.ProfileTreeNode} node
-     * @return {!WebInspector.TimelineModel.ProfileTreeNode}
-     */
-    _nodeToGroupNode: function(nodeToGroupId, node)
-    {
-        var id = nodeToGroupId(node);
-        var groupNode = this._groupNodes.get(id);
-        if (!groupNode) {
-            groupNode = new WebInspector.TimelineModel.ProfileTreeNode();
-            groupNode.name = id || WebInspector.UIString("(unattributed)");
-            groupNode.selfTime = 0;
-            groupNode.totalTime = 0;
-            groupNode.children = new Map();
-            this._groupNodes.set(id, groupNode);
-        }
-        return groupNode;
+        columns.push({id: "self", title: WebInspector.UIString("Self Time"), width: "110px", fixedWidth: true, sortable: true});
+        columns.push({id: "total", title: WebInspector.UIString("Total Time"), width: "110px", fixedWidth: true, sortable: true});
+        columns.push({id: "activity", title: WebInspector.UIString("Activity"), disclosure: true, sortable: true});
     },
 
     _sortingChanged: function()
     {
-        var columnIdentifier = this.dataGrid.sortColumnIdentifier();
+        var columnIdentifier = this._dataGrid.sortColumnIdentifier();
+        if (!columnIdentifier)
+            return;
+        var sortFunction;
+        switch (columnIdentifier) {
+        case "startTime":
+            sortFunction = compareStartTime;
+            break;
+        case "self":
+            sortFunction = compareNumericField.bind(null, "selfTime");
+            break;
+        case "total":
+            sortFunction = compareNumericField.bind(null, "totalTime");
+            break;
+        case "activity":
+            sortFunction = compareName;
+            break;
+        default:
+            console.assert(false, "Unknown sort field: " + columnIdentifier);
+            return;
+        }
+        this._dataGrid.sortNodes(sortFunction, !this._dataGrid.isSortOrderAscending());
+
         /**
          * @param {string} field
          * @param {!WebInspector.DataGridNode} a
          * @param {!WebInspector.DataGridNode} b
          * @return {number}
          */
-        function compareField(field, a, b)
+        function compareNumericField(field, a, b)
         {
-            var nodeA = /** @type {!WebInspector.TimelineTreeView.GridNode} */ (a);
-            var nodeB = /** @type {!WebInspector.TimelineTreeView.GridNode} */ (b);
-            var valueA = nodeA._profileNode[field];
-            var valueB = nodeB._profileNode[field];
-            return valueA === valueB ? 0 : valueA > valueB ? 1 : -1;
+            var nodeA = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (a);
+            var nodeB = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (b);
+            return nodeA._profileNode[field] - nodeB._profileNode[field];
         }
-        var field = {
-            "self": "selfTime",
-            "total": "totalTime",
-            "activity": "name"
-        }[columnIdentifier];
-        this.dataGrid.sortNodes(compareField.bind(null, field), !this.dataGrid.isSortOrderAscending());
+
+        /**
+         * @param {!WebInspector.DataGridNode} a
+         * @param {!WebInspector.DataGridNode} b
+         * @return {number}
+         */
+        function compareStartTime(a, b)
+        {
+            var nodeA = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (a);
+            var nodeB = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (b);
+            return nodeA._profileNode.event.startTime - nodeB._profileNode.event.startTime;
+        }
+
+        /**
+         * @param {!WebInspector.DataGridNode} a
+         * @param {!WebInspector.DataGridNode} b
+         * @return {number}
+         */
+        function compareName(a, b)
+        {
+            var nodeA = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (a);
+            var nodeB = /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (b);
+            var nameA = WebInspector.TimelineTreeView.eventNameForSorting(nodeA._profileNode.event);
+            var nameB = WebInspector.TimelineTreeView.eventNameForSorting(nodeB._profileNode.event);
+            return nameA.localeCompare(nameB);
+        }
+    },
+
+    _updateDetailsForSelection: function()
+    {
+        var selectedNode = this._dataGrid.selectedNode ? /** @type {!WebInspector.TimelineTreeView.TreeGridNode} */ (this._dataGrid.selectedNode)._profileNode : null;
+        if (selectedNode === this._lastSelectedNode)
+            return;
+        this._lastSelectedNode = selectedNode;
+        this._detailsView.detachChildWidgets();
+        this._detailsView.element.removeChildren();
+        if (!selectedNode || !this._showDetailsForNode(selectedNode)) {
+            var banner = this._detailsView.element.createChild("div", "banner");
+            banner.createTextChild(WebInspector.UIString("Select item for details."));
+        }
+    },
+
+    /**
+     * @param {!WebInspector.TimelineProfileTree.Node} node
+     * @return {boolean}
+     */
+    _showDetailsForNode: function(node)
+    {
+        return false;
+    },
+
+    /**
+     * @param {!Event} event
+     */
+    _onMouseMove: function(event)
+    {
+        var gridNode = event.target && (event.target instanceof Node)
+            ? /** @type {?WebInspector.TimelineTreeView.TreeGridNode} */ (this._dataGrid.dataGridNodeFromNode(/** @type {!Node} */ (event.target)))
+            : null;
+        var profileNode = gridNode && gridNode._profileNode;
+        if (profileNode === this._lastHoveredProfileNode)
+            return;
+        this._lastHoveredProfileNode = profileNode;
+        this._onHover(profileNode);
+    },
+
+    /**
+     * @param {!WebInspector.TimelineProfileTree.Node} treeNode
+     * @return {?WebInspector.TimelineTreeView.GridNode}
+     */
+    _dataGridNodeForTreeNode: function(treeNode)
+    {
+        return treeNode[WebInspector.TimelineTreeView.TreeGridNode._gridNodeSymbol] || null;
     },
 
     __proto__: WebInspector.VBox.prototype
@@ -274,78 +286,33 @@ WebInspector.TimelineTreeView.prototype = {
  * @param {!WebInspector.TracingModel.Event} event
  * @return {string}
  */
-WebInspector.TimelineTreeView.eventId = function(event)
+WebInspector.TimelineTreeView.eventNameForSorting = function(event)
 {
     if (event.name === WebInspector.TimelineModel.RecordType.JSFrame) {
         var data = event.args["data"];
-        return "f:" + data["functionName"] + "@" + (data["scriptId"] || data["url"] || "");
+        return  data["functionName"] + "@" + (data["scriptId"] || data["url"] || "");
     }
-    return event.name + ":@" + WebInspector.TimelineTreeView.eventURL(event);
-}
-
-/**
- * @param {!WebInspector.TracingModel.Event} event
- * @return {?string}
- */
-WebInspector.TimelineTreeView.eventURL = function(event)
-{
-    var data = event.args["data"] || event.args["beginData"];
-    var url = data && data["url"];
-    if (url)
-        return url;
-    var topFrame = event.stackTrace && event.stackTrace[0];
-    url = topFrame && topFrame["url"];
-    if (url)
-        return url;
-    var initiator = event.initiator;
-    var initiatorTopFrame = initiator && initiator.stackTrace && initiator.stackTrace[0];
-    return initiatorTopFrame && initiatorTopFrame["url"] || null;
+    return event.name + ":@" + WebInspector.TimelineProfileTree.eventURL(event);
 }
 
 /**
  * @constructor
  * @extends {WebInspector.SortableDataGridNode}
- * @param {!WebInspector.TimelineModel.ProfileTreeNode} profileNode
+ * @param {!WebInspector.TimelineProfileTree.Node} profileNode
  * @param {number} grandTotalTime
  * @param {number} maxSelfTime
  * @param {number} maxTotalTime
+ * @param {!WebInspector.TimelineTreeView} treeView
  */
-WebInspector.TimelineTreeView.GridNode = function(profileNode, grandTotalTime, maxSelfTime, maxTotalTime)
+WebInspector.TimelineTreeView.GridNode = function(profileNode, grandTotalTime, maxSelfTime, maxTotalTime, treeView)
 {
-    /**
-     * @param {number} time
-     * @return {string}
-     */
-    function formatMilliseconds(time)
-    {
-        return WebInspector.UIString("%.1f\u2009ms", time);
-    }
-    /**
-     * @param {number} value
-     * @return {string}
-     */
-    function formatPercent(value)
-    {
-        return WebInspector.UIString("%.2f\u2009%%", value);
-    }
-
     this._populated = false;
     this._profileNode = profileNode;
-    this._totalTime = grandTotalTime;
-    this._maxTimes = { self: maxSelfTime, total: maxTotalTime };
-    var selfTime = profileNode.selfTime;
-    var selfPercent = selfTime / grandTotalTime * 100;
-    var totalTime = profileNode.totalTime;
-    var totalPercent = totalTime / grandTotalTime * 100;
-    var data = {
-        "activity": profileNode.name,
-        "self-percent": formatPercent(selfPercent),
-        "self": formatMilliseconds(selfTime),
-        "total-percent": formatPercent(totalPercent),
-        "total": formatMilliseconds(totalTime),
-    };
-    var hasChildren = this._profileNode.children ? this._profileNode.children.size > 0 : false;
-    WebInspector.SortableDataGridNode.call(this, data, hasChildren);
+    this._treeView = treeView;
+    this._grandTotalTime = grandTotalTime;
+    this._maxSelfTime = maxSelfTime;
+    this._maxTotalTime = maxTotalTime;
+    WebInspector.SortableDataGridNode.call(this, null, false);
 }
 
 WebInspector.TimelineTreeView.GridNode.prototype = {
@@ -371,20 +338,24 @@ WebInspector.TimelineTreeView.GridNode.prototype = {
         var container = cell.createChild("div", "name-container");
         var icon = container.createChild("div", "activity-icon");
         var name = container.createChild("div", "activity-name");
-        var link = container.createChild("div", "activity-link");
         var event = this._profileNode.event;
-        if (event) {
+        if (this._profileNode.isGroupNode()) {
+            var treeView = /** @type {!WebInspector.AggregatedTimelineTreeView} */ (this._treeView);
+            var info = treeView._displayInfoForGroupNode(this._profileNode);
+            name.textContent = info.name;
+            icon.style.backgroundColor = info.color;
+        } else if (event) {
+            var data = event.args["data"];
+            var deoptReason = data && data["deoptReason"];
+            if (deoptReason && deoptReason !== "no reason")
+                container.createChild("div", "activity-warning").title = WebInspector.UIString("Not optimized: %s", deoptReason);
             name.textContent = event.name === WebInspector.TimelineModel.RecordType.JSFrame
                 ? WebInspector.beautifyFunctionName(event.args["data"]["functionName"])
                 : WebInspector.TimelineUIUtils.eventTitle(event);
-            var url = WebInspector.TimelineTreeView.eventURL(event);
-            if (url)
-                link.appendChild(WebInspector.linkifyResourceAsNode(url));
-            var category = WebInspector.TimelineUIUtils.eventStyle(event).category;
-            icon.style.backgroundColor = category.fillColorStop1;
-        } else {
-            name.textContent = this._profileNode.name;
-            icon.style.backgroundColor = WebInspector.TimelineUIUtils.colorForURL(this._profileNode.name);
+            var link = this._treeView._linkifyLocation(event);
+            if (link)
+                container.createChild("div", "activity-link").appendChild(link);
+            icon.style.backgroundColor = WebInspector.TimelineUIUtils.eventColor(event);
         }
         return cell;
     },
@@ -395,21 +366,65 @@ WebInspector.TimelineTreeView.GridNode.prototype = {
      */
     _createValueCell: function(columnIdentifier)
     {
-        if (columnIdentifier !== "self" && columnIdentifier !== "total")
+        if (columnIdentifier !== "self" && columnIdentifier !== "total" && columnIdentifier !== "startTime")
             return null;
+
+        var showPercents = false;
+        var value;
+        var maxTime;
+        switch (columnIdentifier) {
+        case "startTime":
+            value = this._profileNode.event.startTime - this._treeView._model.minimumRecordTime();
+            break;
+        case "self":
+            value = this._profileNode.selfTime;
+            maxTime = this._maxSelfTime;
+            showPercents = true;
+            break;
+        case "total":
+            value = this._profileNode.totalTime;
+            maxTime = this._maxTotalTime;
+            showPercents = true;
+            break;
+        default:
+            return null;
+        }
         var cell = this.createTD(columnIdentifier);
         cell.className = "numeric-column";
         var textDiv = cell.createChild("div");
-        textDiv.createChild("span").textContent = this.data[columnIdentifier];
-        var percentColumn = columnIdentifier + "-percent";
-        if (percentColumn in this.data) {
-            textDiv.createChild("span", "percent-column").textContent = this.data[percentColumn];
-            textDiv.classList.add("profile-multiple-values");
+        textDiv.createChild("span").textContent = WebInspector.UIString("%.1f\u2009ms", value);
+
+        if (showPercents && this._treeView._exposePercentages())
+            textDiv.createChild("span", "percent-column").textContent = WebInspector.UIString("%.1f\u2009%%", value / this._grandTotalTime * 100);
+        if (maxTime) {
+            textDiv.classList.add("background-percent-bar");
+            cell.createChild("div", "background-bar-container").createChild("div", "background-bar").style.width = (value * 100 / maxTime).toFixed(1) + "%";
         }
-        cell.createChild("div", "background-bar").style.width = (this._profileNode[columnIdentifier + "Time"] * 100 / this._maxTimes[columnIdentifier]).toFixed(1) + "%";
         return cell;
     },
 
+    __proto__: WebInspector.SortableDataGridNode.prototype
+}
+
+/**
+ * @constructor
+ * @extends {WebInspector.TimelineTreeView.GridNode}
+ * @param {!WebInspector.TimelineProfileTree.Node} profileNode
+ * @param {number} grandTotalTime
+ * @param {number} maxSelfTime
+ * @param {number} maxTotalTime
+ * @param {!WebInspector.TimelineTreeView} treeView
+ */
+WebInspector.TimelineTreeView.TreeGridNode = function(profileNode, grandTotalTime, maxSelfTime, maxTotalTime, treeView)
+{
+    WebInspector.TimelineTreeView.GridNode.call(this, profileNode, grandTotalTime, maxSelfTime, maxTotalTime, treeView);
+    this.hasChildren = this._profileNode.children ? this._profileNode.children.size > 0 : false;
+    profileNode[WebInspector.TimelineTreeView.TreeGridNode._gridNodeSymbol] = this;
+}
+
+WebInspector.TimelineTreeView.TreeGridNode._gridNodeSymbol = Symbol("treeGridNode");
+
+WebInspector.TimelineTreeView.TreeGridNode.prototype = {
     /**
      * @override
      */
@@ -421,10 +436,457 @@ WebInspector.TimelineTreeView.GridNode.prototype = {
         if (!this._profileNode.children)
             return;
         for (var node of this._profileNode.children.values()) {
-            var gridNode = new WebInspector.TimelineTreeView.GridNode(node, this._totalTime, this._maxTimes.self, this._maxTimes.total);
+            var gridNode = new WebInspector.TimelineTreeView.TreeGridNode(node, this._grandTotalTime, this._maxSelfTime, this._maxTotalTime, this._treeView);
             this.insertChildOrdered(gridNode);
         }
     },
 
-    __proto__: WebInspector.SortableDataGridNode.prototype
+    __proto__: WebInspector.TimelineTreeView.GridNode.prototype
+};
+
+
+/**
+ * @constructor
+ * @extends {WebInspector.TimelineTreeView}
+ * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
+ */
+WebInspector.AggregatedTimelineTreeView = function(model, filters)
+{
+    this._groupBySetting = WebInspector.settings.createSetting("timelineTreeGroupBy", WebInspector.TimelineAggregator.GroupBy.Category);
+    WebInspector.TimelineTreeView.call(this, model, filters);
+    var nonessentialEvents = [
+        WebInspector.TimelineModel.RecordType.EventDispatch,
+        WebInspector.TimelineModel.RecordType.FunctionCall,
+        WebInspector.TimelineModel.RecordType.TimerFire
+    ];
+    this._filters.push(new WebInspector.ExclusiveNameFilter(nonessentialEvents));
+    this._stackView = new WebInspector.TimelineStackView(this);
+    this._stackView.addEventListener(WebInspector.TimelineStackView.Events.SelectionChanged, this._onStackViewSelectionChanged, this);
+}
+
+WebInspector.AggregatedTimelineTreeView.prototype = {
+    /**
+     * @override
+     * @param {!WebInspector.TimelineSelection} selection
+     */
+    updateContents: function(selection)
+    {
+        this._updateExtensionResolver();
+        WebInspector.TimelineTreeView.prototype.updateContents.call(this, selection);
+        var rootNode = this._dataGrid.rootNode();
+        if (rootNode.children.length)
+            rootNode.children[0].revealAndSelect();
+    },
+
+    _updateExtensionResolver: function()
+    {
+        this._executionContextNamesByOrigin = new Map();
+        for (var target of WebInspector.targetManager.targets()) {
+            for (var context of target.runtimeModel.executionContexts())
+                this._executionContextNamesByOrigin.set(context.origin, context.name);
+        }
+    },
+
+    /**
+     * @param {!WebInspector.TimelineProfileTree.Node} node
+     * @return {!{name: string, color: string}}
+     */
+    _displayInfoForGroupNode: function(node)
+    {
+        var categories = WebInspector.TimelineUIUtils.categories();
+        var color = node.id ? WebInspector.TimelineUIUtils.eventColor(node.event) : categories["other"].color;
+
+        switch (this._groupBySetting.get()) {
+        case WebInspector.TimelineAggregator.GroupBy.Category:
+            var category = categories[node.id] || categories["other"];
+            return {name: category.title, color: category.color};
+
+        case WebInspector.TimelineAggregator.GroupBy.Domain:
+        case WebInspector.TimelineAggregator.GroupBy.Subdomain:
+            var name = node.id;
+            if (WebInspector.TimelineAggregator.isExtensionInternalURL(name))
+                name = WebInspector.UIString("[Chrome extensions overhead]");
+            else if (name.startsWith("chrome-extension"))
+                name = this._executionContextNamesByOrigin.get(name) || name;
+            return {
+                name: name || WebInspector.UIString("unattributed"),
+                color: color
+            };
+
+        case WebInspector.TimelineAggregator.GroupBy.EventName:
+            var name = node.event.name === WebInspector.TimelineModel.RecordType.JSFrame ?
+                WebInspector.UIString("JavaScript") : WebInspector.TimelineUIUtils.eventTitle(node.event);
+            return {
+                name: name,
+                color: node.event.name === WebInspector.TimelineModel.RecordType.JSFrame ?
+                    WebInspector.TimelineUIUtils.eventStyle(node.event).category.color : color
+            };
+
+        case WebInspector.TimelineAggregator.GroupBy.URL:
+            break;
+
+        default:
+            console.assert(false, "Unexpected aggregation type");
+        }
+        return {
+            name: node.id || WebInspector.UIString("unattributed"),
+            color: color
+        };
+    },
+
+    /**
+     * @override
+     * @param {!Element} parent
+     */
+    _populateToolbar: function(parent)
+    {
+        var panelToolbar = new WebInspector.Toolbar("", parent);
+        this._groupByCombobox = new WebInspector.ToolbarComboBox(this._onGroupByChanged.bind(this));
+        /**
+         * @param {string} name
+         * @param {string} id
+         * @this {WebInspector.TimelineTreeView}
+         */
+        function addGroupingOption(name, id)
+        {
+            var option = this._groupByCombobox.createOption(name, "", id);
+            this._groupByCombobox.addOption(option);
+            if (id === this._groupBySetting.get())
+                this._groupByCombobox.select(option);
+        }
+        addGroupingOption.call(this, WebInspector.UIString("No Grouping"), WebInspector.TimelineAggregator.GroupBy.None);
+        addGroupingOption.call(this, WebInspector.UIString("Group by Activity"), WebInspector.TimelineAggregator.GroupBy.EventName);
+        addGroupingOption.call(this, WebInspector.UIString("Group by Category"), WebInspector.TimelineAggregator.GroupBy.Category);
+        addGroupingOption.call(this, WebInspector.UIString("Group by Domain"), WebInspector.TimelineAggregator.GroupBy.Domain);
+        addGroupingOption.call(this, WebInspector.UIString("Group by Subdomain"), WebInspector.TimelineAggregator.GroupBy.Subdomain);
+        addGroupingOption.call(this, WebInspector.UIString("Group by URL"), WebInspector.TimelineAggregator.GroupBy.URL);
+        panelToolbar.appendToolbarItem(this._groupByCombobox);
+    },
+
+    /**
+     * @param {!WebInspector.TimelineProfileTree.Node} treeNode
+     * @return {!Array<!WebInspector.TimelineProfileTree.Node>}
+     */
+    _buildHeaviestStack: function(treeNode)
+    {
+        console.assert(!!treeNode.parent, "Attempt to build stack for tree root");
+        var result = [];
+        // Do not add root to the stack, as it's the tree itself.
+        for (var node = treeNode; node && node.parent; node = node.parent)
+            result.push(node);
+        result = result.reverse();
+        for (node = treeNode; node && node.children && node.children.size;) {
+            var children = Array.from(node.children.values());
+            node = children.reduce((a, b) => a.totalTime > b.totalTime ? a : b);
+            result.push(node);
+        }
+        return result;
+    },
+
+    /**
+     * @override
+     * @return {boolean}
+     */
+    _exposePercentages: function()
+    {
+        return true;
+    },
+
+    _onGroupByChanged: function()
+    {
+        this._groupBySetting.set(this._groupByCombobox.selectedOption().value);
+        this._refreshTree();
+    },
+
+    _onStackViewSelectionChanged: function()
+    {
+        var treeNode = this._stackView.selectedTreeNode();
+        if (treeNode)
+            this.selectProfileNode(treeNode, true);
+    },
+
+    /**
+     * @override
+     * @param {!WebInspector.TimelineProfileTree.Node} node
+     * @return {boolean}
+     */
+    _showDetailsForNode: function(node)
+    {
+        var stack = this._buildHeaviestStack(node);
+        this._stackView.setStack(stack, node);
+        this._stackView.show(this._detailsView.element);
+        return true;
+    },
+
+    /**
+     * @return {!WebInspector.TimelineAggregator}
+     */
+    _createAggregator: function()
+    {
+        return new WebInspector.TimelineAggregator(
+            event => WebInspector.TimelineUIUtils.eventStyle(event).title,
+            event => WebInspector.TimelineUIUtils.eventStyle(event).category.name
+        );
+    },
+
+    __proto__: WebInspector.TimelineTreeView.prototype,
+};
+
+/**
+ * @constructor
+ * @extends {WebInspector.AggregatedTimelineTreeView}
+ * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
+ */
+WebInspector.CallTreeTimelineTreeView = function(model, filters)
+{
+    WebInspector.AggregatedTimelineTreeView.call(this, model, filters);
+    this._dataGrid.markColumnAsSortedBy("total", WebInspector.DataGrid.Order.Descending);
+}
+
+WebInspector.CallTreeTimelineTreeView.prototype = {
+    /**
+     * @override
+     * @return {!WebInspector.TimelineProfileTree.Node}
+     */
+    _buildTree: function()
+    {
+        var topDown = this._buildTopDownTree(WebInspector.TimelineAggregator.eventId);
+        return this._createAggregator().performGrouping(topDown, this._groupBySetting.get());
+    },
+
+    __proto__: WebInspector.AggregatedTimelineTreeView.prototype,
+};
+
+/**
+ * @constructor
+ * @extends {WebInspector.AggregatedTimelineTreeView}
+ * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
+ */
+WebInspector.BottomUpTimelineTreeView = function(model, filters)
+{
+    WebInspector.AggregatedTimelineTreeView.call(this, model, filters);
+    this._dataGrid.markColumnAsSortedBy("self", WebInspector.DataGrid.Order.Descending);
+}
+
+WebInspector.BottomUpTimelineTreeView.prototype = {
+    /**
+     * @override
+     * @return {!WebInspector.TimelineProfileTree.Node}
+     */
+    _buildTree: function()
+    {
+        var topDown = this._buildTopDownTree(WebInspector.TimelineAggregator.eventId);
+        return WebInspector.TimelineProfileTree.buildBottomUp(topDown, this._createAggregator().groupFunction(this._groupBySetting.get()));
+    },
+
+    __proto__: WebInspector.AggregatedTimelineTreeView.prototype
+};
+
+/**
+ * @constructor
+ * @extends {WebInspector.TimelineTreeView}
+ * @param {!WebInspector.TimelineModel} model
+ * @param {!Array<!WebInspector.TimelineModel.Filter>} filters
+ * @param {!WebInspector.TimelineModeViewDelegate} delegate
+ */
+WebInspector.EventsTimelineTreeView = function(model, filters, delegate)
+{
+    this._filtersControl = new WebInspector.TimelineFilters();
+    this._filtersControl.addEventListener(WebInspector.TimelineFilters.Events.FilterChanged, this._onFilterChanged, this);
+    WebInspector.TimelineTreeView.call(this, model, filters);
+    this._delegate = delegate;
+    this._filters.push.apply(this._filters, this._filtersControl.filters());
+    this._dataGrid.markColumnAsSortedBy("startTime", WebInspector.DataGrid.Order.Ascending);
+}
+
+WebInspector.EventsTimelineTreeView.prototype = {
+    /**
+     * @override
+     * @param {!WebInspector.TimelineSelection} selection
+     */
+    updateContents: function(selection)
+    {
+        WebInspector.TimelineTreeView.prototype.updateContents.call(this, selection);
+        if (selection.type() === WebInspector.TimelineSelection.Type.TraceEvent) {
+            var event = /** @type {!WebInspector.TracingModel.Event} */ (selection.object());
+            this._selectEvent(event, true);
+        }
+    },
+
+    /**
+     * @override
+     * @return {!WebInspector.TimelineProfileTree.Node}
+     */
+    _buildTree: function()
+    {
+        this._currentTree = this._buildTopDownTree();
+        return this._currentTree;
+    },
+
+    _onFilterChanged: function()
+    {
+        var selectedEvent = this._lastSelectedNode && this._lastSelectedNode.event;
+        this._refreshTree();
+        if (selectedEvent)
+            this._selectEvent(selectedEvent, false);
+    },
+
+    /**
+     * @param {!WebInspector.TracingModel.Event} event
+     * @return {?WebInspector.TimelineProfileTree.Node}
+     */
+    _findNodeWithEvent: function(event)
+    {
+        var iterators = [this._currentTree.children.values()];
+
+        while (iterators.length) {
+            var iterator = iterators.peekLast().next();
+            if (iterator.done) {
+                iterators.pop();
+                continue;
+            }
+            var child = /** @type {!WebInspector.TimelineProfileTree.Node} */ (iterator.value);
+            if (child.event === event)
+                return child;
+            if (child.children)
+                iterators.push(child.children.values());
+        }
+        return null;
+    },
+
+    /**
+     * @param {!WebInspector.TracingModel.Event} event
+     * @param {boolean=} expand
+     */
+    _selectEvent: function(event, expand)
+    {
+        var node = this._findNodeWithEvent(event);
+        if (!node)
+            return;
+        this.selectProfileNode(node, false);
+        if (expand)
+            this._dataGridNodeForTreeNode(node).expand();
+    },
+
+    /**
+     * @override
+     * @param {!Array<!WebInspector.DataGrid.ColumnDescriptor>} columns
+     */
+    _populateColumns: function(columns)
+    {
+        columns.push({id: "startTime", title: WebInspector.UIString("Start Time"), width: "110px", fixedWidth: true, sortable: true});
+        WebInspector.TimelineTreeView.prototype._populateColumns.call(this, columns);
+    },
+
+    /**
+     * @override
+     * @param {!Element} parent
+     */
+    _populateToolbar: function(parent)
+    {
+        var filtersWidget = this._filtersControl.filtersWidget();
+        filtersWidget.forceShowFilterBar();
+        filtersWidget.show(parent);
+    },
+
+    /**
+     * @override
+     * @param {!WebInspector.TimelineProfileTree.Node} node
+     * @return {boolean}
+     */
+    _showDetailsForNode: function(node)
+    {
+        var traceEvent = node.event;
+        if (!traceEvent)
+            return false;
+        WebInspector.TimelineUIUtils.buildTraceEventDetails(traceEvent, this._model, this._linkifier, false, showDetails.bind(this));
+        return true;
+
+        /**
+         * @param {!DocumentFragment} fragment
+         * @this {WebInspector.EventsTimelineTreeView}
+         */
+        function showDetails(fragment)
+        {
+            this._detailsView.element.appendChild(fragment);
+        }
+    },
+
+    /**
+     * @override
+     * @param {?WebInspector.TimelineProfileTree.Node} node
+     */
+    _onHover: function(node)
+    {
+        this._delegate.highlightEvent(node && node.event);
+    },
+
+    __proto__: WebInspector.TimelineTreeView.prototype
+}
+
+/**
+ * @constructor
+ * @extends {WebInspector.VBox}
+ */
+WebInspector.TimelineStackView = function(treeView)
+{
+    WebInspector.VBox.call(this);
+    var header = this.element.createChild("div", "timeline-stack-view-header");
+    header.textContent = WebInspector.UIString("Heaviest stack");
+    this._treeView = treeView;
+    var columns = [
+        {id: "total", title: WebInspector.UIString("Total Time"), fixedWidth: true, width: "110px"},
+        {id: "activity", title: WebInspector.UIString("Activity")}
+    ];
+    this._dataGrid = new WebInspector.ViewportDataGrid(columns);
+    this._dataGrid.setResizeMethod(WebInspector.DataGrid.ResizeMethod.Last);
+    this._dataGrid.addEventListener(WebInspector.DataGrid.Events.SelectedNode, this._onSelectionChanged, this);
+    this._dataGrid.asWidget().show(this.element);
+}
+
+/**
+ * @enum {symbol}
+ */
+WebInspector.TimelineStackView.Events = {
+    SelectionChanged: Symbol("SelectionChanged")
+}
+
+WebInspector.TimelineStackView.prototype = {
+    /**
+     * @param {!Array<!WebInspector.TimelineProfileTree.Node>} stack
+     * @param {!WebInspector.TimelineProfileTree.Node} selectedNode
+     */
+    setStack: function(stack, selectedNode)
+    {
+        var rootNode = this._dataGrid.rootNode();
+        rootNode.removeChildren();
+        var nodeToReveal = null;
+        var totalTime = Math.max.apply(Math, stack.map(node => node.totalTime));
+        for (var node of stack) {
+            var gridNode = new WebInspector.TimelineTreeView.GridNode(node, totalTime, totalTime, totalTime, this._treeView);
+            rootNode.appendChild(gridNode);
+            if (node === selectedNode)
+                nodeToReveal = gridNode;
+        }
+        nodeToReveal.revealAndSelect();
+    },
+
+    /**
+     * @return {?WebInspector.TimelineProfileTree.Node}
+     */
+    selectedTreeNode: function()
+    {
+        var selectedNode = this._dataGrid.selectedNode;
+        return selectedNode && /** @type {!WebInspector.TimelineTreeView.GridNode} */ (selectedNode)._profileNode;
+    },
+
+    _onSelectionChanged: function()
+    {
+        this.dispatchEventToListeners(WebInspector.TimelineStackView.Events.SelectionChanged);
+    },
+
+    __proto__: WebInspector.VBox.prototype
 }

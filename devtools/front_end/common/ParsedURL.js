@@ -88,25 +88,13 @@ WebInspector.ParsedURL = function(url)
 
 /**
  * @param {string} url
- * @return {string}
- */
-WebInspector.ParsedURL._decodeIfPossible = function(url)
-{
-    var decodedURL = url;
-    try {
-        decodedURL = decodeURI(url);
-    } catch (e) { }
-    return decodedURL;
-}
-
-/**
- * @param {string} url
  * @return {!Array.<string>}
  */
 WebInspector.ParsedURL.splitURLIntoPathComponents = function(url)
 {
-    var decodedURL = WebInspector.ParsedURL._decodeIfPossible(url);
-    var parsedURL = new WebInspector.ParsedURL(decodedURL);
+    if (url.startsWith("/"))
+        url = "file://" + url;
+    var parsedURL = new WebInspector.ParsedURL(url);
     var origin;
     var folderPath;
     var name;
@@ -132,6 +120,46 @@ WebInspector.ParsedURL.splitURLIntoPathComponents = function(url)
     }
     result.push(name);
     return result;
+}
+
+/**
+ * @param {string} url
+ * @return {string}
+ */
+WebInspector.ParsedURL.extractOrigin = function(url)
+{
+    var parsedURL = new WebInspector.ParsedURL(url);
+    if (!parsedURL.isValid)
+        return "";
+
+    var origin = parsedURL.scheme + "://" + parsedURL.host;
+    if (parsedURL.port)
+        origin += ":" + parsedURL.port;
+    return origin;
+}
+
+/**
+ * @param {string} url
+ * @return {string}
+ */
+WebInspector.ParsedURL.extractExtension = function(url)
+{
+    var lastIndexOfDot = url.lastIndexOf(".");
+    var extension = lastIndexOfDot !== -1 ? url.substr(lastIndexOfDot + 1) : "";
+    var indexOfQuestionMark = extension.indexOf("?");
+    if (indexOfQuestionMark !== -1)
+        extension = extension.substr(0, indexOfQuestionMark);
+    return extension;
+}
+
+/**
+ * @param {string} url
+ * @return {string}
+ */
+WebInspector.ParsedURL.extractName = function(url)
+{
+    var index = url.lastIndexOf("/");
+    return index !== -1 ? url.substr(index + 1) : url;
 }
 
 /**
@@ -253,8 +281,38 @@ WebInspector.ParsedURL.prototype = {
      */
     lastPathComponentWithFragment: function()
     {
-       return this.lastPathComponent + (this.fragment ? "#" + this.fragment : "");
-    }
+        return this.lastPathComponent + (this.fragment ? "#" + this.fragment : "");
+    },
+
+    /**
+     * @return {string}
+     */
+    domain: function()
+    {
+        if (this.isDataURL())
+            return "data:";
+        return this.host + (this.port ? ":" + this.port : "");
+    },
+
+    /**
+     * @return {string}
+     */
+    securityOrigin: function()
+    {
+        if (this.isDataURL())
+            return "data:";
+        return this.scheme + "://" + this.domain();
+    },
+
+    /**
+     * @return {string}
+     */
+    urlWithoutScheme: function()
+    {
+        if (this.scheme && this.url.startsWith(this.scheme + "://"))
+            return this.url.substring(this.scheme.length + 3);
+        return this.url;
+    },
 }
 
 /**
@@ -280,6 +338,15 @@ WebInspector.ParsedURL.splitLineAndColumn = function(string)
     }
 
     return {url: string.substring(0, string.length - lineColumnMatch[0].length), lineNumber: lineNumber, columnNumber: columnNumber};
+}
+
+/**
+ * @param {string} url
+ * @return {boolean}
+ */
+WebInspector.ParsedURL.isRelativeURL = function(url)
+{
+    return !(/^[A-Za-z][A-Za-z0-9+.-]*:/.test(url));
 }
 
 /**

@@ -20,9 +20,9 @@ WebInspector.ShortcutRegistry = function(actionRegistry, document)
 WebInspector.ShortcutRegistry.prototype = {
     /**
      * @param {number} key
-     * @return {!Array.<string>}
+     * @return {!Array.<!WebInspector.Action>}
      */
-    applicableActions: function(key)
+    _applicableActions: function(key)
     {
         return this._actionRegistry.applicableActions(this._defaultActionsForKey(key).valuesArray(), WebInspector.context);
     },
@@ -76,21 +76,21 @@ WebInspector.ShortcutRegistry.prototype = {
      */
     handleShortcut: function(event)
     {
-        this.handleKey(WebInspector.KeyboardShortcut.makeKeyFromEvent(event), event.keyIdentifier, event);
+        this.handleKey(WebInspector.KeyboardShortcut.makeKeyFromEvent(event), event.key, event);
     },
 
     /**
      * @param {number} key
-     * @param {string} keyIdentifier
+     * @param {string} domKey
      * @param {!KeyboardEvent=} event
      */
-    handleKey: function(key, keyIdentifier, event)
+    handleKey: function(key, domKey, event)
     {
         var keyModifiers = key >> 8;
-        var actionIds = this.applicableActions(key);
-        if (!actionIds.length)
+        var actions = this._applicableActions(key);
+        if (!actions.length)
             return;
-        if (WebInspector.GlassPane.DefaultFocusedViewStack.length > 1) {
+        if (WebInspector.Dialog.hasInstance()) {
             if (event && !isPossiblyInputKey())
                 event.consume(true);
             return;
@@ -99,22 +99,23 @@ WebInspector.ShortcutRegistry.prototype = {
         if (!isPossiblyInputKey()) {
             if (event)
                 event.consume(true);
-            processNextAction.call(this);
+            processNextAction.call(this, false);
         } else {
-            this._pendingActionTimer = setTimeout(processNextAction.bind(this), 0);
+            this._pendingActionTimer = setTimeout(processNextAction.bind(this, false), 0);
         }
 
         /**
+         * @param {boolean} handled
          * @this {WebInspector.ShortcutRegistry}
          */
-        function processNextAction()
+        function processNextAction(handled)
         {
             delete this._pendingActionTimer;
-            var actionId = actionIds.shift();
-            if (!actionId)
+            var action = actions.shift();
+            if (!action || handled)
                 return;
 
-            this._actionRegistry.execute(actionId).then(processNextAction.bind(this));
+            action.execute().then(processNextAction.bind(this));
         }
 
         /**
@@ -122,7 +123,7 @@ WebInspector.ShortcutRegistry.prototype = {
          */
         function isPossiblyInputKey()
         {
-            if (!event || !WebInspector.isEditing() || /^F\d+|Control|Shift|Alt|Meta|Win|U\+001B$/.test(keyIdentifier))
+            if (!event || !WebInspector.isEditing() || /^F\d+|Control|Shift|Alt|Meta|Escape|Win|U\+001B$/.test(domKey))
                 return false;
 
             if (!keyModifiers)

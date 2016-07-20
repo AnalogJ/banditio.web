@@ -122,10 +122,7 @@ WebInspector.HandlerRegistry.prototype = {
         if (!contentProvider.contentURL())
             return;
 
-        var contentType = contentProvider.contentType();
-        if (contentType !== WebInspector.resourceTypes.Document &&
-            contentType !== WebInspector.resourceTypes.Stylesheet &&
-            contentType !== WebInspector.resourceTypes.Script)
+        if (!contentProvider.contentType().isDocumentOrScriptOrStyleSheet())
             return;
 
         /**
@@ -146,10 +143,13 @@ WebInspector.HandlerRegistry.prototype = {
         {
             if (contentProvider instanceof WebInspector.UISourceCode) {
                 var uiSourceCode = /** @type {!WebInspector.UISourceCode} */ (contentProvider);
-                uiSourceCode.save(forceSaveAs);
+                if (forceSaveAs)
+                    uiSourceCode.saveAs();
+                else
+                    uiSourceCode.commitWorkingCopy();
                 return;
             }
-            contentProvider.requestContent(doSave.bind(null, forceSaveAs));
+            contentProvider.requestContent().then(doSave.bind(null, forceSaveAs));
         }
 
         contextMenu.appendSeparator();
@@ -315,7 +315,7 @@ WebInspector.HandlerRegistry.OpenAnchorLocationSettingUI.prototype = {
             return null;
 
         var handlerSelector = new WebInspector.HandlerSelector(WebInspector.openAnchorLocationRegistry);
-        return WebInspector.SettingsUI.createCustomSetting(WebInspector.UIString("Open links in"), handlerSelector.element);
+        return WebInspector.SettingsUI.createCustomSetting(WebInspector.UIString("Link handling:"), handlerSelector.element);
     }
 }
 

@@ -141,17 +141,7 @@ WebInspector.TimelineOverviewPane.prototype = {
     {
         var document = this.element.ownerDocument;
         var x = this._cursorPosition;
-        var promises = this._overviewControls.map(mapToPopover);
-
-        /**
-         * @param {!WebInspector.TimelineOverview} control
-         * @return {!Promise<?Element>}
-         */
-        function mapToPopover(control)
-        {
-            return control.popoverElementPromise(x)
-        }
-
+        var promises = this._overviewControls.map(control => control.popoverElementPromise(x));
         return Promise.all(promises).then(buildFragment);
 
         /**
@@ -178,6 +168,14 @@ WebInspector.TimelineOverviewPane.prototype = {
     wasShown: function()
     {
         this._update();
+    },
+
+    /**
+     * @override
+     */
+    willHide: function()
+    {
+        this._popoverHelper.hidePopover();
     },
 
     /**
@@ -272,6 +270,8 @@ WebInspector.TimelineOverviewPane.prototype = {
 
     reset: function()
     {
+        this._windowStartTime = 0;
+        this._windowEndTime = Infinity;
         this._overviewCalculator.reset();
         this._overviewGrid.reset();
         this._overviewGrid.setResizeEnabled(false);
@@ -425,7 +425,7 @@ WebInspector.TimelineOverviewCalculator.prototype = {
      * @param {number=} precision
      * @return {string}
      */
-    formatTime: function(value, precision)
+    formatValue: function(value, precision)
     {
         return Number.preciseMillisToString(value - this.zeroTime(), precision);
     },

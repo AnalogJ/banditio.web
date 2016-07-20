@@ -39,11 +39,13 @@ WebInspector.CodeMirrorTextEditor = function(url, delegate)
     WebInspector.VBox.call(this);
     this._delegate = delegate;
     this._url = url;
+    /** @type {!Array<string>} */
+    this._gutters = ["CodeMirror-linenumbers"];
 
     this.registerRequiredCSS("cm/codemirror.css");
     this.registerRequiredCSS("source_frame/cmdevtools.css");
 
-    this.element.appendChild(WebInspector.CodeMirrorUtils.createThemeStyle());
+    WebInspector.CodeMirrorUtils.appendThemeStyle(this.element);
 
     this._codeMirror = new window.CodeMirror(this.element, {
         lineNumbers: true,
@@ -1004,6 +1006,19 @@ WebInspector.CodeMirrorTextEditor.prototype = {
     },
 
     /**
+     * @param {number} lineNumber
+     * @param {number} columnNumber
+     * @param {!Element} element
+     * @return {!CodeMirror.TextMarker}
+     */
+    addBookmark: function(lineNumber, columnNumber, element)
+    {
+        return this._codeMirror.setBookmark(new CodeMirror.Pos(lineNumber, columnNumber), {
+            widget: element
+        });
+    },
+
+    /**
      * @override
      * @return {!Element}
      */
@@ -1064,15 +1079,26 @@ WebInspector.CodeMirrorTextEditor.prototype = {
     _contextMenu: function(event)
     {
         var contextMenu = new WebInspector.ContextMenu(event);
+        event.consume(true); // Consume event now to prevent document from handling the async menu
         var target = event.target.enclosingNodeOrSelfWithClass("CodeMirror-gutter-elt");
+        var promise;
         if (target)
-            this._delegate.populateLineGutterContextMenu(contextMenu, parseInt(target.textContent, 10) - 1);
+            promise = this._delegate.populateLineGutterContextMenu(contextMenu, parseInt(target.textContent, 10) - 1);
         else {
             var textSelection = this.selection();
-            this._delegate.populateTextAreaContextMenu(contextMenu, textSelection.startLine, textSelection.startColumn);
+            promise = this._delegate.populateTextAreaContextMenu(contextMenu, textSelection.startLine, textSelection.startColumn);
         }
-        contextMenu.appendApplicableItems(this);
-        contextMenu.show();
+
+        promise.then(showAsync.bind(this));
+
+        /**
+         * @this {WebInspector.CodeMirrorTextEditor}
+         */
+        function showAsync()
+        {
+            contextMenu.appendApplicableItems(this);
+            contextMenu.show();
+        }
     },
 
     /**
@@ -1103,6 +1129,43 @@ WebInspector.CodeMirrorTextEditor.prototype = {
             if (classes[i].startsWith("cm-breakpoint"))
                 this._codeMirror.removeLineClass(lineNumber, "wrap", classes[i]);
         }
+    },
+
+    /**
+     * @param {string} type
+     * @param {boolean} leftToNumbers
+     */
+    installGutter: function(type, leftToNumbers)
+    {
+        if (this._gutters.indexOf(type) !== -1)
+            return;
+        if (leftToNumbers)
+            this._gutters.unshift(type);
+        else
+            this._gutters.push(type);
+        this._codeMirror.setOption("gutters", this._gutters.slice());
+        this._codeMirror.refresh();
+    },
+
+    /**
+     * @param {string} type
+     */
+    uninstallGutter: function(type)
+    {
+        this._gutters = this._gutters.filter(gutter => gutter !== type);
+        this._codeMirror.setOption("gutters", this._gutters.slice());
+        this._codeMirror.refresh();
+    },
+
+    /**
+     * @param {number} lineNumber
+     * @param {string} type
+     * @param {?Element} element
+     */
+    setGutterDecoration: function(lineNumber, type, element)
+    {
+        console.assert(this._gutters.indexOf(type) !== -1, "Cannot decorate unexisting gutter.")
+        this._codeMirror.setGutterMarker(lineNumber, type, element);
     },
 
     /**
@@ -1198,7 +1261,7 @@ WebInspector.CodeMirrorTextEditor.prototype = {
         this.clearPositionHighlight();
         this._highlightedLine = this._codeMirror.getLineHandle(lineNumber);
         if (!this._highlightedLine)
-          return;
+            return;
         this._revealLine(lineNumber);
         if (shouldHighlight) {
             this._codeMirror.addLineClass(this._highlightedLine, null, "cm-highlight");
@@ -1402,6 +1465,22 @@ WebInspector.CodeMirrorTextEditor.prototype = {
     firstVisibleLine: function()
     {
         return this._codeMirror.lineAtHeight(this._codeMirror.getScrollInfo().top, "local");
+    },
+
+    /**
+     * @return {number}
+     */
+    scrollTop: function()
+    {
+        return this._codeMirror.getScrollInfo().top;
+    },
+
+    /**
+     * @param {number} scrollTop
+     */
+    setScrollTop: function(scrollTop)
+    {
+        this._codeMirror.scrollTo(0, scrollTop);
     },
 
     /**
@@ -1631,7 +1710,7 @@ WebInspector.CodeMirrorPositionHandle.prototype = {
      */
     equal: function(positionHandle)
     {
-        return positionHandle._lineHandle === this._lineHandle && positionHandle._columnNumber == this._columnNumber && positionHandle._codeMirror === this._codeMirror;
+        return positionHandle._lineHandle === this._lineHandle && positionHandle._columnNumber === this._columnNumber && positionHandle._codeMirror === this._codeMirror;
     }
 }
 
@@ -2170,6 +2249,7 @@ WebInspector.TextEditorDelegate.prototype = {
     /**
      * @param {!WebInspector.ContextMenu} contextMenu
      * @param {number} lineNumber
+     * @return {!Promise}
      */
     populateLineGutterContextMenu: function(contextMenu, lineNumber) { },
 
@@ -2177,6 +2257,7 @@ WebInspector.TextEditorDelegate.prototype = {
      * @param {!WebInspector.ContextMenu} contextMenu
      * @param {number} lineNumber
      * @param {number} columnNumber
+     * @return {!Promise}
      */
     populateTextAreaContextMenu: function(contextMenu, lineNumber, columnNumber) { },
 

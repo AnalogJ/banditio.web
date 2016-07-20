@@ -44,8 +44,20 @@ WebInspector.NetworkManager = function(target)
         this._networkAgent.setCacheDisabled(true);
     if (WebInspector.moduleSetting("monitoringXHREnabled").get())
         this._networkAgent.setMonitoringXHREnabled(true);
-    this._initNetworkConditions();
-    this._networkAgent.enable();
+
+    // Limit buffer when talking to a remote device.
+    if (Runtime.queryParam("remoteFrontend") || Runtime.queryParam("ws"))
+        this._networkAgent.enable(10000000, 5000000);
+    else
+        this._networkAgent.enable();
+
+    /** @type {!Map<!SecurityAgent.CertificateId, !Promise<!NetworkAgent.CertificateDetails>>} */
+    this._certificateDetailsCache = new Map();
+
+    this._bypassServiceWorkerSetting = WebInspector.settings.createSetting("bypassServiceWorker", false);
+    if (this._bypassServiceWorkerSetting.get())
+        this._bypassServiceWorkerChanged();
+    this._bypassServiceWorkerSetting.addChangeListener(this._bypassServiceWorkerChanged, this);
 
     WebInspector.moduleSetting("cacheDisabled").addChangeListener(this._cacheDisabledSettingChanged, this);
 }
@@ -55,7 +67,7 @@ WebInspector.NetworkManager.EventTypes = {
     RequestUpdated: "RequestUpdated",
     RequestFinished: "RequestFinished",
     RequestUpdateDropped: "RequestUpdateDropped",
-    ResponseReceivedSecurityDetails: "ResponseReceivedSecurityDetails"
+    ResponseReceived: "ResponseReceived"
 }
 
 WebInspector.NetworkManager._MIMETypes = {
@@ -69,16 +81,47 @@ WebInspector.NetworkManager._MIMETypes = {
     "text/vtt":                    {"texttrack": true},
 }
 
-/** @typedef {{throughput: number, latency: number}} */
+/**
+ * @param {!WebInspector.Target} target
+ * @return {?WebInspector.NetworkManager}
+ */
+WebInspector.NetworkManager.fromTarget = function(target)
+{
+    return /** @type {?WebInspector.NetworkManager} */ (target.model(WebInspector.NetworkManager));
+}
+
+/** @typedef {{download: number, upload: number, latency: number, title: string}} */
 WebInspector.NetworkManager.Conditions;
+/** @type {!WebInspector.NetworkManager.Conditions} */
+WebInspector.NetworkManager.NoThrottlingConditions = {title: WebInspector.UIString("No throttling"), download: -1, upload: -1, latency: 0};
+/** @type {!WebInspector.NetworkManager.Conditions} */
+WebInspector.NetworkManager.OfflineConditions = {title: WebInspector.UIString("Offline"), download: 0, upload: 0, latency: 0};
 
 /**
  * @param {!WebInspector.NetworkManager.Conditions} conditions
- * @return {boolean}
+ * @return {!NetworkAgent.ConnectionType}
+ * TODO(allada): this belongs to NetworkConditionsSelector, which should hardcode/guess it.
  */
-WebInspector.NetworkManager.IsThrottlingEnabled = function(conditions)
+WebInspector.NetworkManager._connectionType = function(conditions)
 {
-    return conditions.throughput >= 0;
+    if (!conditions.download && !conditions.upload)
+        return NetworkAgent.ConnectionType.None;
+    var types = WebInspector.NetworkManager._connectionTypes;
+    if (!types) {
+        WebInspector.NetworkManager._connectionTypes = [];
+        types = WebInspector.NetworkManager._connectionTypes;
+        types.push(["2g", NetworkAgent.ConnectionType.Cellular2g]);
+        types.push(["3g", NetworkAgent.ConnectionType.Cellular3g]);
+        types.push(["4g", NetworkAgent.ConnectionType.Cellular4g]);
+        types.push(["bluetooth", NetworkAgent.ConnectionType.Bluetooth]);
+        types.push(["wifi", NetworkAgent.ConnectionType.Wifi]);
+        types.push(["wimax", NetworkAgent.ConnectionType.Wimax]);
+    }
+    for (var type of types) {
+        if (conditions.title.toLowerCase().indexOf(type[0]) !== -1)
+            return type[1];
+    }
+    return NetworkAgent.ConnectionType.Other;
 }
 
 WebInspector.NetworkManager.prototype = {
@@ -105,54 +148,55 @@ WebInspector.NetworkManager.prototype = {
         WebInspector.moduleSetting("cacheDisabled").removeChangeListener(this._cacheDisabledSettingChanged, this);
     },
 
-    clearBrowserCache: function()
+    /**
+     * @param {!SecurityAgent.CertificateId} certificateId
+     * @return {!Promise<!NetworkAgent.CertificateDetails>}
+     */
+    certificateDetailsPromise: function(certificateId)
     {
-        this._networkAgent.clearBrowserCache();
-    },
-
-    clearBrowserCookies: function()
-    {
-        this._networkAgent.clearBrowserCookies();
-    },
-
-    _initNetworkConditions: function()
-    {
-        this._networkAgent.canEmulateNetworkConditions(callback.bind(this));
+        var cachedPromise = this._certificateDetailsCache.get(certificateId);
+        if (cachedPromise)
+            return cachedPromise;
 
         /**
          * @this {WebInspector.NetworkManager}
+         * @param {function(?NetworkAgent.CertificateDetails)} resolve
+         * @param {function()} reject
          */
-        function callback(error, canEmulate)
-        {
-            if (error || !canEmulate)
-                return;
-            WebInspector.moduleSetting("networkConditions").addChangeListener(this._networkConditionsSettingChanged, this);
-            var conditions = WebInspector.moduleSetting("networkConditions").get();
-            if (conditions.throughput < 0)
-                return;
-            this._updateNetworkConditions(conditions);
+        function executor(resolve, reject) {
+            /**
+             * @param {?Protocol.Error} error
+             * @param {?NetworkAgent.CertificateDetails} certificateDetails
+             */
+            function innerCallback(error, certificateDetails)
+            {
+                if (error) {
+                    console.error("Unable to get certificate details from the browser (for certificate ID ", certificateId, "): ", error);
+                    reject();
+                } else {
+                    resolve(certificateDetails);
+                }
+            }
+            this._networkAgent.getCertificateDetails(certificateId, innerCallback);
         }
+
+        var promise = new Promise(executor.bind(this));
+
+        this._certificateDetailsCache.set(certificateId, promise);
+        return promise;
     },
 
     /**
-     * @param {!WebInspector.NetworkManager.Conditions} conditions
+     * @return {!WebInspector.Setting}
      */
-    _updateNetworkConditions: function(conditions)
+    bypassServiceWorkerSetting: function()
     {
-        if (conditions.throughput < 0) {
-            this._networkAgent.emulateNetworkConditions(false, 0, 0, 0);
-        } else {
-            var offline = !conditions.throughput && !conditions.latency;
-            this._networkAgent.emulateNetworkConditions(!!offline, conditions.latency, conditions.throughput, conditions.throughput);
-        }
+        return this._bypassServiceWorkerSetting;
     },
 
-    /**
-     * @param {!WebInspector.Event} event
-     */
-    _networkConditionsSettingChanged: function(event)
+    _bypassServiceWorkerChanged: function()
     {
-        this._updateNetworkConditions(/** @type {!WebInspector.NetworkManager.Conditions} */ (event.data));
+        this._networkAgent.setBypassServiceWorker(this._bypassServiceWorkerSetting.get());
     },
 
     __proto__: WebInspector.SDKModel.prototype
@@ -194,6 +238,8 @@ WebInspector.NetworkDispatcher.prototype = {
         networkRequest.requestMethod = request.method;
         networkRequest.setRequestHeaders(this._headersMapToHeadersArray(request.headers));
         networkRequest.requestFormData = request.postData;
+        networkRequest.setInitialPriority(request.initialPriority);
+        networkRequest.mixedContentType = request.mixedContentType || NetworkAgent.RequestMixedContentType.None;
     },
 
     /**
@@ -231,6 +277,8 @@ WebInspector.NetworkDispatcher.prototype = {
 
         networkRequest.protocol = response.protocol;
 
+        networkRequest.setSecurityState(response.securityState);
+
         if (!this._mimeTypeIsConsistentWithType(networkRequest)) {
             var consoleModel = this._manager._target.consoleModel;
             consoleModel.addMessage(new WebInspector.ConsoleMessage(consoleModel.target(), WebInspector.ConsoleMessage.MessageSource.Network,
@@ -242,6 +290,9 @@ WebInspector.NetworkDispatcher.prototype = {
                 0,
                 networkRequest.requestId));
         }
+
+        if (response.securityDetails)
+            networkRequest.setSecurityDetails(response.securityDetails);
     },
 
     /**
@@ -273,6 +324,19 @@ WebInspector.NetworkDispatcher.prototype = {
             return resourceType.name() in WebInspector.NetworkManager._MIMETypes[networkRequest.mimeType];
 
         return false;
+    },
+
+    /**
+     * @override
+     * @param {!NetworkAgent.RequestId} requestId
+     * @param {!NetworkAgent.ResourcePriority} newPriority
+     * @param {!NetworkAgent.Timestamp} timestamp
+     */
+    resourceChangedPriority: function(requestId, newPriority, timestamp)
+    {
+        var networkRequest = this._inflightRequestsById[requestId];
+        if (networkRequest)
+            networkRequest.setPriority(newPriority);
     },
 
     /**
@@ -350,41 +414,7 @@ WebInspector.NetworkDispatcher.prototype = {
         this._updateNetworkRequestWithResponse(networkRequest, response);
 
         this._updateNetworkRequest(networkRequest);
-
-        this._dispatchResponseReceivedSecurityDetails(requestId, response);
-    },
-
-    /**
-     * @param {!NetworkAgent.RequestId} requestId
-     * @param {!NetworkAgent.Response} response
-     */
-    _dispatchResponseReceivedSecurityDetails: function(requestId, response)
-    {
-        var eventData = {};
-        eventData.requestId = requestId;
-        eventData.origin = WebInspector.ParsedURL.splitURLIntoPathComponents(response.url)[0];
-        eventData.securityState = response.securityState;
-        if (response.securityDetails) {
-            /**
-             * @this {WebInspector.NetworkDispatcher}
-             * @param {?Protocol.Error} error
-             * @param {!NetworkAgent.CertificateDetails} certificateDetails
-             */
-            function callback(error, certificateDetails)
-            {
-                if (error)
-                    console.error("Unable to get certificate details from the browser (for certificate ID ", response.securityDetails.certificateId, "): ", error);
-                else
-                    eventData.securityDetails.certificateDetails = certificateDetails;
-
-                this._manager.dispatchEventToListeners(WebInspector.NetworkManager.EventTypes.ResponseReceivedSecurityDetails, eventData);
-            }
-
-            eventData.securityDetails = response.securityDetails;
-            this._manager._networkAgent.getCertificateDetails(response.securityDetails.certificateId, callback.bind(this));
-        } else {
-            this._manager.dispatchEventToListeners(WebInspector.NetworkManager.EventTypes.ResponseReceivedSecurityDetails, eventData);
-        }
+        this._manager.dispatchEventToListeners(WebInspector.NetworkManager.EventTypes.ResponseReceived, networkRequest);
     },
 
     /**
@@ -401,7 +431,7 @@ WebInspector.NetworkDispatcher.prototype = {
             return;
 
         networkRequest.resourceSize += dataLength;
-        if (encodedDataLength != -1)
+        if (encodedDataLength !== -1)
             networkRequest.increaseTransferSize(encodedDataLength);
         networkRequest.endTime = time;
 
@@ -429,9 +459,9 @@ WebInspector.NetworkDispatcher.prototype = {
      * @param {!PageAgent.ResourceType} resourceType
      * @param {string} localizedDescription
      * @param {boolean=} canceled
-     * @param {boolean=} blocked
+     * @param {!NetworkAgent.BlockedReason=} blockedReason
      */
-    loadingFailed: function(requestId, time, resourceType, localizedDescription, canceled, blocked)
+    loadingFailed: function(requestId, time, resourceType, localizedDescription, canceled, blockedReason)
     {
         var networkRequest = this._inflightRequestsById[requestId];
         if (!networkRequest)
@@ -440,7 +470,20 @@ WebInspector.NetworkDispatcher.prototype = {
         networkRequest.failed = true;
         networkRequest.setResourceType(WebInspector.resourceTypes[resourceType]);
         networkRequest.canceled = canceled;
-        networkRequest.blocked = blocked;
+        if (blockedReason) {
+            networkRequest.setBlockedReason(blockedReason);
+            if (blockedReason === NetworkAgent.BlockedReason.Inspector) {
+                var consoleModel = this._manager._target.consoleModel;
+                consoleModel.addMessage(new WebInspector.ConsoleMessage(consoleModel.target(), WebInspector.ConsoleMessage.MessageSource.Network,
+                    WebInspector.ConsoleMessage.MessageLevel.Warning,
+                    WebInspector.UIString("Request was blocked by DevTools: \"%s\".", networkRequest.url),
+                    WebInspector.ConsoleMessage.MessageType.Log,
+                    "",
+                    0,
+                    0,
+                    networkRequest.requestId));
+            }
+        }
         networkRequest.localizedFailDescription = localizedDescription;
         this._finishNetworkRequest(networkRequest, time, -1);
     },
@@ -449,11 +492,11 @@ WebInspector.NetworkDispatcher.prototype = {
      * @override
      * @param {!NetworkAgent.RequestId} requestId
      * @param {string} requestURL
+     * @param {!NetworkAgent.Initiator=} initiator
      */
-    webSocketCreated: function(requestId, requestURL)
+    webSocketCreated: function(requestId, requestURL, initiator)
     {
-        // FIXME: WebSocket MUST have initiator info.
-        var networkRequest = new WebInspector.NetworkRequest(this._manager._target, requestId, requestURL, "", "", "", null);
+        var networkRequest = new WebInspector.NetworkRequest(this._manager._target, requestId, requestURL, "", "", "", initiator || null);
         networkRequest.setResourceType(WebInspector.resourceTypes.WebSocket);
         this._startNetworkRequest(networkRequest);
     },
@@ -678,10 +721,21 @@ WebInspector.MultitargetNetworkManager = function()
 
     /** @type {!Set<string>} */
     this._blockedURLs = new Set();
+    this._blockedSetting = WebInspector.moduleSetting("blockedURLs");
+    this._blockedSetting.addChangeListener(this._updateBlockedURLs, this);
+    this._blockedSetting.set([]);
+    this._updateBlockedURLs();
+
+    this._userAgentOverride = "";
+    /** @type {!Set<!Protocol.NetworkAgent>} */
+    this._agents = new Set();
+    /** @type {!WebInspector.NetworkManager.Conditions} */
+    this._networkConditions = WebInspector.NetworkManager.NoThrottlingConditions;
 }
 
-WebInspector.MultitargetNetworkManager.EventTypes = {
-    BlockedURLsChanged: "BlockedURLsChanged"
+WebInspector.MultitargetNetworkManager.Events = {
+    ConditionsChanged: "ConditionsChanged",
+    UserAgentChanged: "UserAgentChanged"
 }
 
 WebInspector.MultitargetNetworkManager.prototype = {
@@ -694,10 +748,13 @@ WebInspector.MultitargetNetworkManager.prototype = {
         var networkAgent = target.networkAgent();
         if (this._extraHeaders)
             networkAgent.setExtraHTTPHeaders(this._extraHeaders);
-        if (typeof this._userAgent !== "undefined")
-            networkAgent.setUserAgentOverride(this._userAgent);
+        if (this._currentUserAgent())
+            networkAgent.setUserAgentOverride(this._currentUserAgent());
         for (var url of this._blockedURLs)
             networkAgent.addBlockedURL(url);
+        this._agents.add(networkAgent);
+        if (this.isThrottling())
+            this._updateNetworkConditions(networkAgent);
     },
 
     /**
@@ -706,6 +763,55 @@ WebInspector.MultitargetNetworkManager.prototype = {
      */
     targetRemoved: function(target)
     {
+        this._agents.delete(target.networkAgent());
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isThrottling: function()
+    {
+        return this._networkConditions.download >= 0 || this._networkConditions.upload >= 0 || this._networkConditions.latency > 0;
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isOffline: function()
+    {
+        return !this._networkConditions.download && !this._networkConditions.upload;
+    },
+
+    /**
+     * @param {!WebInspector.NetworkManager.Conditions} conditions
+     */
+    setNetworkConditions: function(conditions)
+    {
+        this._networkConditions = conditions;
+        for (var agent of this._agents)
+            this._updateNetworkConditions(agent);
+        this.dispatchEventToListeners(WebInspector.MultitargetNetworkManager.Events.ConditionsChanged);
+    },
+
+    /**
+     * @return {!WebInspector.NetworkManager.Conditions}
+     */
+    networkConditions: function()
+    {
+        return this._networkConditions;
+    },
+
+    /**
+     * @param {!Protocol.NetworkAgent} networkAgent
+     */
+    _updateNetworkConditions: function(networkAgent)
+    {
+        var conditions = this._networkConditions;
+        if (!this.isThrottling()) {
+            networkAgent.emulateNetworkConditions(false, 0, 0, 0);
+        } else {
+            networkAgent.emulateNetworkConditions(this.isOffline(), conditions.latency, conditions.download < 0 ? 0 : conditions.download, conditions.upload < 0 ? 0 : conditions.upload, WebInspector.NetworkManager._connectionType(conditions));
+        }
     },
 
     /**
@@ -719,39 +825,122 @@ WebInspector.MultitargetNetworkManager.prototype = {
     },
 
     /**
+     * @return {string}
+     */
+    _currentUserAgent: function()
+    {
+        return this._customUserAgent ? this._customUserAgent : this._userAgentOverride;
+    },
+
+    _updateUserAgentOverride: function()
+    {
+        var userAgent = this._currentUserAgent();
+        WebInspector.ResourceLoader.targetUserAgent = userAgent;
+        for (var target of WebInspector.targetManager.targets())
+            target.networkAgent().setUserAgentOverride(userAgent);
+    },
+
+    /**
      * @param {string} userAgent
      */
     setUserAgentOverride: function(userAgent)
     {
-        WebInspector.ResourceLoader.targetUserAgent = userAgent;
-        this._userAgent = userAgent;
-        for (var target of WebInspector.targetManager.targets())
-            target.networkAgent().setUserAgentOverride(this._userAgent);
+        if (this._userAgentOverride === userAgent)
+            return;
+        this._userAgentOverride = userAgent;
+        if (!this._customUserAgent)
+            this._updateUserAgentOverride();
+        this.dispatchEventToListeners(WebInspector.MultitargetNetworkManager.Events.UserAgentChanged);
+    },
+
+    /**
+     * @return {string}
+     */
+    userAgentOverride: function()
+    {
+        return this._userAgentOverride;
+    },
+
+    /**
+     * @param {string} userAgent
+     */
+    setCustomUserAgentOverride: function(userAgent)
+    {
+        this._customUserAgent = userAgent;
+        this._updateUserAgentOverride();
+    },
+
+    _updateBlockedURLs: function()
+    {
+        var blocked = this._blockedSetting.get();
+        for (var url of blocked) {
+            if (!this._blockedURLs.has(url))
+                this._addBlockedURL(url);
+        }
+        for (var url of this._blockedURLs) {
+            if (blocked.indexOf(url) === -1)
+                this._removeBlockedURL(url);
+        }
     },
 
     /**
      * @param {string} url
      */
-    toggleURLBlocked: function(url)
+    _addBlockedURL: function(url)
     {
-        if (this._blockedURLs.has(url)) {
-            this._blockedURLs.delete(url);
-            for (var target of WebInspector.targetManager.targets())
-                target.networkAgent().removeBlockedURL(url);
-        } else {
-            this._blockedURLs.add(url);
-            for (var target of WebInspector.targetManager.targets())
-                target.networkAgent().addBlockedURL(url);
-        }
-        this.dispatchEventToListeners(WebInspector.MultitargetNetworkManager.EventTypes.BlockedURLsChanged);
+        this._blockedURLs.add(url);
+        for (var target of WebInspector.targetManager.targets())
+            target.networkAgent().addBlockedURL(url);
     },
 
     /**
-     * @return {!Set<string>}
+     * @param {string} url
      */
-    blockedURLs: function()
+    _removeBlockedURL: function(url)
     {
-        return this._blockedURLs;
+        this._blockedURLs.delete(url);
+        for (var target of WebInspector.targetManager.targets())
+            target.networkAgent().removeBlockedURL(url);
+    },
+
+    clearBrowserCache: function()
+    {
+        for (var target of WebInspector.targetManager.targets())
+            target.networkAgent().clearBrowserCache();
+    },
+
+    clearBrowserCookies: function()
+    {
+        for (var target of WebInspector.targetManager.targets())
+            target.networkAgent().clearBrowserCookies();
+    },
+
+    /**
+     * @param {!SecurityAgent.CertificateId} certificateId
+     */
+    showCertificateViewer: function(certificateId)
+    {
+        var target = WebInspector.targetManager.mainTarget();
+        if (target)
+            target.networkAgent().showCertificateViewer(certificateId);
+    },
+
+    /**
+     * @param {string} url
+     * @param {function(number, !Object.<string, string>, string)} callback
+     */
+    loadResource: function(url, callback)
+    {
+        var headers = {};
+
+        var currentUserAgent = this._currentUserAgent();
+        if (currentUserAgent)
+            headers["User-Agent"] = currentUserAgent;
+
+        if (WebInspector.moduleSetting("cacheDisabled").get())
+            headers["Cache-Control"] = "no-cache";
+
+        WebInspector.ResourceLoader.load(url, headers, callback);
     },
 
     __proto__: WebInspector.Object.prototype

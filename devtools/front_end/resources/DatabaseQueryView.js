@@ -53,14 +53,6 @@ WebInspector.DatabaseQueryView.Events = {
 }
 
 WebInspector.DatabaseQueryView.prototype = {
-    /**
-     * @return {!Array.<!WebInspector.ToolbarItem>}
-     */
-    toolbarItems: function()
-    {
-        return [];
-    },
-
     _messagesClicked: function()
     {
         if (!this._prompt.isCaretInsidePrompt() && this.element.isComponentSelectionCollapsed())
@@ -69,11 +61,13 @@ WebInspector.DatabaseQueryView.prototype = {
 
     /**
      * @param {!Element} proxyElement
+     * @param {string} text
+     * @param {number} cursorOffset
      * @param {!Range} wordRange
      * @param {boolean} force
      * @param {function(!Array.<string>, number=)} completionsReadyCallback
      */
-    completions: function(proxyElement, wordRange, force, completionsReadyCallback)
+    completions: function(proxyElement, text, cursorOffset, wordRange, force, completionsReadyCallback)
     {
         var prefix = wordRange.toString().toLowerCase();
         if (!prefix)
@@ -154,7 +148,7 @@ WebInspector.DatabaseQueryView.prototype = {
 
         if (dataGrid) {
             dataGrid.renderInline();
-            this._appendViewQueryResult(trimmedQuery, dataGrid);
+            this._appendViewQueryResult(trimmedQuery, dataGrid.asWidget());
             dataGrid.autoSizeColumns(5);
         }
 
@@ -175,7 +169,6 @@ WebInspector.DatabaseQueryView.prototype = {
     {
         var resultElement = this._appendQueryResult(query);
         view.show(resultElement);
-
         this._promptElement.scrollIntoView(false);
     },
 

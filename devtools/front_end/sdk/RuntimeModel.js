@@ -39,15 +39,13 @@ WebInspector.RuntimeModel = function(target)
 
     this._agent = target.runtimeAgent();
     this.target().registerRuntimeDispatcher(new WebInspector.RuntimeDispatcher(this));
-    if (target.hasJSContext())
+    if (target.hasJSCapability())
         this._agent.enable();
     /**
      * @type {!Object.<number, !WebInspector.ExecutionContext>}
      */
     this._executionContextById = {};
-
-    if (!Runtime.experiments.isEnabled("customObjectFormatters"))
-        return;
+    this._executionContextComparator = WebInspector.ExecutionContext.comparator;
 
     if (WebInspector.moduleSetting("customFormatters").get())
         this._agent.setCustomObjectFormatterEnabled(true);
@@ -58,6 +56,7 @@ WebInspector.RuntimeModel = function(target)
 WebInspector.RuntimeModel.Events = {
     ExecutionContextCreated: "ExecutionContextCreated",
     ExecutionContextDestroyed: "ExecutionContextDestroyed",
+    ExecutionContextChanged: "ExecutionContextChanged"
 }
 
 WebInspector.RuntimeModel._privateScript = "private script";
@@ -69,7 +68,44 @@ WebInspector.RuntimeModel.prototype = {
      */
     executionContexts: function()
     {
-        return Object.values(this._executionContextById);
+        return Object.values(this._executionContextById).sort(this.executionContextComparator());
+    },
+
+    /**
+     * @param {function(!WebInspector.ExecutionContext,!WebInspector.ExecutionContext)} comparator
+     */
+    setExecutionContextComparator: function(comparator)
+    {
+        this._executionContextComparator = comparator;
+    },
+
+    /**
+     * @return {function(!WebInspector.ExecutionContext,!WebInspector.ExecutionContext)} comparator
+     */
+    executionContextComparator: function()
+    {
+        return this._executionContextComparator;
+    },
+
+    /**
+     * @return {?WebInspector.ExecutionContext}
+     */
+    defaultExecutionContext: function()
+    {
+        for (var context of Object.values(this._executionContextById)) {
+            if (context.isDefault)
+                return context;
+        }
+        return null;
+    },
+
+    /**
+     * @param {!RuntimeAgent.ExecutionContextId} id
+     * @return {?WebInspector.ExecutionContext}
+     */
+    executionContext: function(id)
+    {
+        return this._executionContextById[id] || null;
     },
 
     /**
@@ -78,10 +114,10 @@ WebInspector.RuntimeModel.prototype = {
     _executionContextCreated: function(context)
     {
         // The private script context should be hidden behind an experiment.
-        if (context.name == WebInspector.RuntimeModel._privateScript && !context.origin && !Runtime.experiments.isEnabled("privateScriptInspection")) {
+        if (context.name === WebInspector.RuntimeModel._privateScript && !context.origin && !Runtime.experiments.isEnabled("privateScriptInspection")) {
             return;
         }
-        var executionContext = new WebInspector.ExecutionContext(this.target(), context.id, context.name, context.origin, !context.type, context.frameId);
+        var executionContext = new WebInspector.ExecutionContext(this.target(), context.id, context.name, context.origin, context.isDefault, context.frameId);
         this._executionContextById[executionContext.id] = executionContext;
         this.dispatchEventToListeners(WebInspector.RuntimeModel.Events.ExecutionContextCreated, executionContext);
     },
@@ -100,6 +136,9 @@ WebInspector.RuntimeModel.prototype = {
 
     _executionContextsCleared: function()
     {
+        var debuggerModel = WebInspector.DebuggerModel.fromTarget(this.target());
+        if (debuggerModel)
+            debuggerModel.globalObjectCleared();
         var contexts = this.executionContexts();
         this._executionContextById = {};
         for (var  i = 0; i < contexts.length; ++i)
@@ -145,6 +184,11 @@ WebInspector.RuntimeModel.prototype = {
         return new WebInspector.RemoteObjectProperty(name, this.createRemoteObjectFromPrimitiveValue(value));
     },
 
+    discardConsoleEntries: function()
+    {
+        this._agent.discardConsoleEntries();
+    },
+
     /**
      * @param {!WebInspector.Event} event
      */
@@ -152,6 +196,127 @@ WebInspector.RuntimeModel.prototype = {
     {
         var enabled = /** @type {boolean} */ (event.data);
         this._agent.setCustomObjectFormatterEnabled(enabled);
+    },
+
+    /**
+     * @param {string} expression
+     * @param {string} sourceURL
+     * @param {boolean} persistScript
+     * @param {number} executionContextId
+     * @param {function(!RuntimeAgent.ScriptId=, ?RuntimeAgent.ExceptionDetails=)=} callback
+     */
+    compileScript: function(expression, sourceURL, persistScript, executionContextId, callback)
+    {
+        this._agent.compileScript(expression, sourceURL, persistScript, executionContextId, innerCallback);
+
+        /**
+         * @param {?Protocol.Error} error
+         * @param {!RuntimeAgent.ScriptId=} scriptId
+         * @param {?RuntimeAgent.ExceptionDetails=} exceptionDetails
+         */
+        function innerCallback(error, scriptId, exceptionDetails)
+        {
+            if (error) {
+                console.error(error);
+                return;
+            }
+            if (callback)
+                callback(scriptId, exceptionDetails);
+        }
+    },
+
+    /**
+     * @param {!RuntimeAgent.ScriptId} scriptId
+     * @param {number} executionContextId
+     * @param {string=} objectGroup
+     * @param {boolean=} doNotPauseOnExceptionsAndMuteConsole
+     * @param {boolean=} includeCommandLineAPI
+     * @param {function(?RuntimeAgent.RemoteObject, ?RuntimeAgent.ExceptionDetails=)=} callback
+     */
+    runScript: function(scriptId, executionContextId, objectGroup, doNotPauseOnExceptionsAndMuteConsole, includeCommandLineAPI, callback)
+    {
+        this._agent.runScript(scriptId, executionContextId, objectGroup, doNotPauseOnExceptionsAndMuteConsole, includeCommandLineAPI, innerCallback);
+
+        /**
+         * @param {?Protocol.Error} error
+         * @param {?RuntimeAgent.RemoteObject} result
+         * @param {?RuntimeAgent.ExceptionDetails=} exceptionDetails
+         */
+        function innerCallback(error, result, exceptionDetails)
+        {
+            if (error) {
+                console.error(error);
+                return;
+            }
+            if (callback)
+                callback(result, exceptionDetails);
+        }
+    },
+
+    /**
+     * @param {!RuntimeAgent.RemoteObject} payload
+     * @param {!Object=} hints
+     */
+    _inspectRequested: function(payload, hints)
+    {
+        var object = this.createRemoteObject(payload);
+
+        if (hints.copyToClipboard) {
+            this._copyRequested(object);
+            return;
+        }
+
+        if (object.isNode()) {
+            WebInspector.Revealer.revealPromise(object).then(object.release.bind(object));
+            return;
+        }
+
+        if (object.type === "function") {
+            WebInspector.RemoteFunction.objectAsFunction(object).targetFunctionDetails().then(didGetDetails);
+            return;
+        }
+
+        /**
+         * @param {?WebInspector.DebuggerModel.FunctionDetails} response
+         */
+        function didGetDetails(response)
+        {
+            object.release();
+            if (!response || !response.location)
+                return;
+            WebInspector.Revealer.reveal(response.location);
+        }
+        object.release();
+    },
+
+    /**
+     * @param {!WebInspector.RemoteObject} object
+     */
+    _copyRequested: function(object)
+    {
+        if (!object.objectId) {
+            InspectorFrontendHost.copyText(object.value);
+            return;
+        }
+        object.callFunctionJSON(toStringForClipboard, [ { value : object.subtype } ], InspectorFrontendHost.copyText.bind(InspectorFrontendHost));
+
+        /**
+         * @param {string} subtype
+         * @this {Object}
+         * @suppressReceiverCheck
+         */
+        function toStringForClipboard(subtype)
+        {
+            if (subtype === "node")
+                return this.outerHTML;
+            if (subtype && typeof this === "undefined")
+                return subtype + "";
+            try {
+                return JSON.stringify(this, null, "  ");
+            } catch (e) {
+                return "" + this;
+            }
+        }
     },
 
     __proto__: WebInspector.SDKModel.prototype
@@ -192,30 +357,140 @@ WebInspector.RuntimeDispatcher.prototype = {
     executionContextsCleared: function()
     {
         this._runtimeModel._executionContextsCleared();
-    }
+    },
 
+    /**
+     * @override
+     * @param {number} exceptionId
+     * @param {number} timestamp
+     * @param {!RuntimeAgent.ExceptionDetails} details
+     * @param {!RuntimeAgent.RemoteObject=} exception
+     * @param {number=} executionContextId
+     */
+    exceptionThrown: function(exceptionId, timestamp, details, exception, executionContextId)
+    {
+        var consoleMessage = new WebInspector.ConsoleMessage(
+            this._runtimeModel.target(),
+            WebInspector.ConsoleMessage.MessageSource.JS,
+            WebInspector.ConsoleMessage.MessageLevel.Error,
+            details.text,
+            undefined,
+            details.url,
+            details.lineNumber,
+            details.columnNumber,
+            undefined,
+            exception ? ["Uncaught (in promise)", exception] : undefined,
+            details.stackTrace,
+            timestamp,
+            executionContextId,
+            details.scriptId);
+        consoleMessage.setExceptionId(exceptionId);
+        this._runtimeModel.target().consoleModel.addMessage(consoleMessage);
+    },
+
+    /**
+     * @override
+     * @param {string} message
+     * @param {number} exceptionId
+     */
+    exceptionRevoked: function(message, exceptionId)
+    {
+        var consoleMessage = new WebInspector.ConsoleMessage(
+            this._runtimeModel.target(),
+            WebInspector.ConsoleMessage.MessageSource.JS,
+            WebInspector.ConsoleMessage.MessageLevel.RevokedError,
+            message,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined);
+        consoleMessage.setRevokedExceptionId(exceptionId);
+        this._runtimeModel.target().consoleModel.addMessage(consoleMessage);
+    },
+
+    /**
+     * @override
+     * @param {string} type
+     * @param {!Array.<!RuntimeAgent.RemoteObject>} args
+     * @param {number} executionContextId
+     * @param {number} timestamp
+     * @param {!RuntimeAgent.StackTrace=} stackTrace
+     */
+    consoleAPICalled: function(type, args, executionContextId, timestamp, stackTrace)
+    {
+        var level = WebInspector.ConsoleMessage.MessageLevel.Log;
+        if (type === WebInspector.ConsoleMessage.MessageType.Debug)
+            level = WebInspector.ConsoleMessage.MessageLevel.Debug;
+        if (type === WebInspector.ConsoleMessage.MessageType.Error || type === WebInspector.ConsoleMessage.MessageType.Assert)
+            level = WebInspector.ConsoleMessage.MessageLevel.Error;
+        if (type === WebInspector.ConsoleMessage.MessageType.Warning)
+            level = WebInspector.ConsoleMessage.MessageLevel.Warning;
+        if (type === WebInspector.ConsoleMessage.MessageType.Info)
+            level = WebInspector.ConsoleMessage.MessageLevel.Info;
+        var message = "";
+        if (args.length && typeof args[0].value === "string")
+            message = args[0].value;
+        else if (args.length && args[0].description)
+            message = args[0].description;
+        var callFrame = stackTrace && stackTrace.callFrames.length ? stackTrace.callFrames[0] : null;
+        var consoleMessage = new WebInspector.ConsoleMessage(
+            this._runtimeModel.target(),
+            WebInspector.ConsoleMessage.MessageSource.ConsoleAPI,
+            level,
+            /** @type {string} */ (message),
+            type,
+            callFrame ? callFrame.url : undefined,
+            callFrame ? callFrame.lineNumber : undefined,
+            callFrame ? callFrame.columnNumber : undefined,
+            undefined,
+            args,
+            stackTrace,
+            timestamp,
+            executionContextId,
+            undefined);
+        this._runtimeModel.target().consoleModel.addMessage(consoleMessage);
+    },
+
+    /**
+     * @override
+     * @param {!RuntimeAgent.RemoteObject} payload
+     * @param {!Object=} hints
+     */
+    inspectRequested: function(payload, hints)
+    {
+        this._runtimeModel._inspectRequested(payload, hints);
+    }
 }
 
 /**
  * @constructor
  * @extends {WebInspector.SDKObject}
  * @param {!WebInspector.Target} target
- * @param {number|undefined} id
+ * @param {number} id
  * @param {string} name
  * @param {string} origin
- * @param {boolean} isPageContext
+ * @param {boolean} isDefault
  * @param {string=} frameId
  */
-WebInspector.ExecutionContext = function(target, id, name, origin, isPageContext, frameId)
+WebInspector.ExecutionContext = function(target, id, name, origin, isDefault, frameId)
 {
     WebInspector.SDKObject.call(this, target);
     this.id = id;
     this.name = name;
     this.origin = origin;
-    this.isMainWorldContext = isPageContext;
+    this.isDefault = isDefault;
     this.runtimeModel = target.runtimeModel;
     this.debuggerModel = WebInspector.DebuggerModel.fromTarget(target);
     this.frameId = frameId;
+
+    var parsedUrl = origin.asParsedURL();
+    this._label = parsedUrl ? parsedUrl.lastPathComponentWithFragment() : name;
 }
 
 /**
@@ -231,9 +506,9 @@ WebInspector.ExecutionContext.comparator = function(a, b)
      */
     function targetWeight(target)
     {
-        if (target.isPage())
+        if (target.hasBrowserCapability())
             return 3;
-        if (target.isDedicatedWorker())
+        if (target.hasJSCapability())
             return 2;
         return 1;
     }
@@ -242,14 +517,10 @@ WebInspector.ExecutionContext.comparator = function(a, b)
     if (weightDiff)
         return -weightDiff;
 
-    var frameIdDiff = String.hashCode(a.frameId) - String.hashCode(b.frameId);
-    if (frameIdDiff)
-        return frameIdDiff;
-
     // Main world context should always go first.
-    if (a.isMainWorldContext)
+    if (a.isDefault)
         return -1;
-    if (b.isMainWorldContext)
+    if (b.isDefault)
         return +1;
     return a.name.localeCompare(b.name);
 }
@@ -262,9 +533,10 @@ WebInspector.ExecutionContext.prototype = {
      * @param {boolean} doNotPauseOnExceptionsAndMuteConsole
      * @param {boolean} returnByValue
      * @param {boolean} generatePreview
-     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?DebuggerAgent.ExceptionDetails=)} callback
+     * @param {boolean} userGesture
+     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?RuntimeAgent.ExceptionDetails=)} callback
      */
-    evaluate: function(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, returnByValue, generatePreview, callback)
+    evaluate: function(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, returnByValue, generatePreview, userGesture, callback)
     {
         // FIXME: It will be moved to separate ExecutionContext.
         if (this.debuggerModel.selectedCallFrame()) {
@@ -278,11 +550,11 @@ WebInspector.ExecutionContext.prototype = {
      * @param {string} objectGroup
      * @param {boolean} returnByValue
      * @param {boolean} generatePreview
-     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?DebuggerAgent.ExceptionDetails=)} callback
+     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?RuntimeAgent.ExceptionDetails=)} callback
      */
     globalObject: function(objectGroup, returnByValue, generatePreview, callback)
     {
-        this._evaluateGlobal("this", objectGroup, false, true, returnByValue, generatePreview, callback);
+        this._evaluateGlobal("this", objectGroup, false, true, returnByValue, generatePreview, false, callback);
     },
 
     /**
@@ -292,9 +564,10 @@ WebInspector.ExecutionContext.prototype = {
      * @param {boolean} doNotPauseOnExceptionsAndMuteConsole
      * @param {boolean} returnByValue
      * @param {boolean} generatePreview
-     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?DebuggerAgent.ExceptionDetails=)} callback
+     * @param {boolean} userGesture
+     * @param {function(?WebInspector.RemoteObject, boolean, ?RuntimeAgent.RemoteObject=, ?RuntimeAgent.ExceptionDetails=)} callback
      */
-    _evaluateGlobal: function(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, returnByValue, generatePreview, callback)
+    _evaluateGlobal: function(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, returnByValue, generatePreview, userGesture, callback)
     {
         if (!expression) {
             // There is no expression, so the completion should happen against global properties.
@@ -306,11 +579,12 @@ WebInspector.ExecutionContext.prototype = {
          * @param {?Protocol.Error} error
          * @param {!RuntimeAgent.RemoteObject} result
          * @param {boolean=} wasThrown
-         * @param {?DebuggerAgent.ExceptionDetails=} exceptionDetails
+         * @param {?RuntimeAgent.ExceptionDetails=} exceptionDetails
          */
         function evalCallback(error, result, wasThrown, exceptionDetails)
         {
             if (error) {
+                console.error(error);
                 callback(null, false);
                 return;
             }
@@ -320,16 +594,18 @@ WebInspector.ExecutionContext.prototype = {
             else
                 callback(this.runtimeModel.createRemoteObject(result), !!wasThrown, undefined, exceptionDetails);
         }
-        this.target().runtimeAgent().evaluate(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, this.id, returnByValue, generatePreview, evalCallback.bind(this));
+        this.target().runtimeAgent().evaluate(expression, objectGroup, includeCommandLineAPI, doNotPauseOnExceptionsAndMuteConsole, this.id, returnByValue, generatePreview, userGesture, evalCallback.bind(this));
     },
 
     /**
      * @param {string} expressionString
+     * @param {string} text
+     * @param {number} cursorOffset
      * @param {string} prefix
      * @param {boolean} force
      * @param {function(!Array.<string>, number=)} completionsReadyCallback
      */
-    completionsForExpression: function(expressionString, prefix, force, completionsReadyCallback)
+    completionsForExpression: function(expressionString, text, cursorOffset, prefix, force, completionsReadyCallback)
     {
         var lastIndex = expressionString.length - 1;
 
@@ -339,7 +615,7 @@ WebInspector.ExecutionContext.prototype = {
         if (dotNotation || bracketNotation)
             expressionString = expressionString.substr(0, lastIndex);
 
-        if (expressionString && parseInt(expressionString, 10) == expressionString) {
+        if (expressionString && !isNaN(expressionString)) {
             // User is entering float value, do not suggest anything.
             completionsReadyCallback([]);
             return;
@@ -353,7 +629,7 @@ WebInspector.ExecutionContext.prototype = {
         if (!expressionString && this.debuggerModel.selectedCallFrame())
             this.debuggerModel.selectedCallFrame().variableNames(receivedPropertyNames.bind(this));
         else
-            this.evaluate(expressionString, "completion", true, true, false, false, evaluated.bind(this));
+            this.evaluate(expressionString, "completion", true, true, false, false, false, evaluated.bind(this));
 
         /**
          * @this {WebInspector.ExecutionContext}
@@ -366,9 +642,34 @@ WebInspector.ExecutionContext.prototype = {
             }
 
             /**
+             * @param {?WebInspector.RemoteObject} object
+             * @return {!Promise<?WebInspector.RemoteObject>}
+             */
+            function extractTarget(object)
+            {
+                if (!object)
+                    return Promise.resolve(/** @type {?WebInspector.RemoteObject} */(null));
+                if (object.type !== "object" || object.subtype !== "proxy")
+                    return Promise.resolve(/** @type {?WebInspector.RemoteObject} */(object));
+                return object.getOwnPropertiesPromise().then(extractTargetFromProperties).then(extractTarget);
+            }
+
+            /**
+             * @param {!{properties: ?Array<!WebInspector.RemoteObjectProperty>, internalProperties: ?Array<!WebInspector.RemoteObjectProperty>}} properties
+             * @return {?WebInspector.RemoteObject}
+             */
+            function extractTargetFromProperties(properties)
+            {
+                var internalProperties = properties.internalProperties || [];
+                var target = internalProperties.find(property => property.name === "[[Target]]");
+                return target ? target.value : null;
+            }
+
+            /**
              * @param {string=} type
+             * @return {!Object}
              * @suppressReceiverCheck
-             * @this {WebInspector.ExecutionContext}
+             * @this {Object}
              */
             function getCompletions(type)
             {
@@ -383,23 +684,39 @@ WebInspector.ExecutionContext.prototype = {
                     object = this;
 
                 var resultSet = {};
-                for (var o = object; o; o = o.__proto__) {
-                    try {
+                try {
+                    for (var o = object; o; o = Object.getPrototypeOf(o)) {
                         if (type === "array" && o === object && ArrayBuffer.isView(o) && o.length > 9999)
                             continue;
                         var names = Object.getOwnPropertyNames(o);
-                        for (var i = 0; i < names.length; ++i)
+                        var isArray = Array.isArray(o);
+                        for (var i = 0; i < names.length; ++i) {
+                            // Skip array elements indexes.
+                            if (isArray && /^[0-9]/.test(names[i]))
+                                continue;
                             resultSet[names[i]] = true;
-                    } catch (e) {
+                        }
                     }
+                } catch (e) {
                 }
                 return resultSet;
             }
 
-            if (result.type === "object" || result.type === "function")
-                result.callFunctionJSON(getCompletions, [WebInspector.RemoteObject.toCallArgument(result.subtype)], receivedPropertyNames.bind(this));
-            else if (result.type === "string" || result.type === "number" || result.type === "boolean")
-                this.evaluate("(" + getCompletions + ")(\"" + result.type + "\")", "completion", false, true, true, false, receivedPropertyNamesFromEval.bind(this));
+            /**
+             * @param {?WebInspector.RemoteObject} object
+             * @this {WebInspector.ExecutionContext}
+             */
+            function completionsForObject(object)
+            {
+                if (!object)
+                    receivedPropertyNames.call(this, null);
+                else if (object.type === "object" || object.type === "function")
+                    object.callFunctionJSON(getCompletions, [WebInspector.RemoteObject.toCallArgument(object.subtype)], receivedPropertyNames.bind(this));
+                else if (object.type === "string" || object.type === "number" || object.type === "boolean")
+                    this.evaluate("(" + getCompletions + ")(\"" + result.type + "\")", "completion", false, true, true, false, false, receivedPropertyNamesFromEval.bind(this));
+            }
+
+            extractTarget(result).then(completionsForObject.bind(this));
         }
 
         /**
@@ -410,13 +727,15 @@ WebInspector.ExecutionContext.prototype = {
          */
         function receivedPropertyNamesFromEval(notRelevant, wasThrown, result)
         {
+            this.target().runtimeAgent().releaseObjectGroup("completion");
             if (result && !wasThrown)
-                receivedPropertyNames.call(this, result.value);
+                receivedPropertyNames.call(this, /** @type {!Object} */(result.value));
             else
                 completionsReadyCallback([]);
         }
 
         /**
+         * @param {?Object} propertyNames
          * @this {WebInspector.ExecutionContext}
          */
         function receivedPropertyNames(propertyNames)
@@ -487,6 +806,23 @@ WebInspector.ExecutionContext.prototype = {
         completionsReadyCallback(results);
     },
 
+    /**
+     * @return {string}
+     */
+    label: function()
+    {
+        return this._label;
+    },
+
+    /**
+     * @param {string} label
+     */
+    setLabel: function(label)
+    {
+        this._label = label;
+        this.runtimeModel.dispatchEventToListeners(WebInspector.RuntimeModel.Events.ExecutionContextChanged, this);
+    },
+
     __proto__: WebInspector.SDKObject.prototype
 }
 
@@ -494,19 +830,30 @@ WebInspector.ExecutionContext.prototype = {
  * @constructor
  * @extends {WebInspector.SDKObject}
  * @param {!WebInspector.Target} target
+ * @param {!WebInspector.RemoteObject} eventTarget
  * @param {string} type
  * @param {boolean} useCapture
+ * @param {boolean} passive
  * @param {?WebInspector.RemoteObject} handler
+ * @param {?WebInspector.RemoteObject} originalHandler
  * @param {!WebInspector.DebuggerModel.Location} location
+ * @param {?WebInspector.RemoteObject} removeFunction
+ * @param {string=} listenerType
  */
-WebInspector.EventListener = function(target, type, useCapture, handler, location)
+WebInspector.EventListener = function(target, eventTarget, type, useCapture, passive, handler, originalHandler, location, removeFunction, listenerType)
 {
     WebInspector.SDKObject.call(this, target);
+    this._eventTarget = eventTarget;
     this._type = type;
     this._useCapture = useCapture;
+    this._passive = passive;
     this._handler = handler;
+    this._originalHandler = originalHandler || handler;
     this._location = location;
-    this._sourceURL = location.script().contentURL();
+    var script = location.script();
+    this._sourceURL = script ? script.contentURL() : "";
+    this._removeFunction = removeFunction;
+    this._listenerType = listenerType || "normal";
 }
 
 WebInspector.EventListener.prototype = {
@@ -524,6 +871,14 @@ WebInspector.EventListener.prototype = {
     useCapture: function()
     {
         return this._useCapture;
+    },
+
+    /**
+     * @return {boolean}
+     */
+    passive: function()
+    {
+        return this._passive;
     },
 
     /**
@@ -548,6 +903,118 @@ WebInspector.EventListener.prototype = {
     sourceURL: function()
     {
         return this._sourceURL;
+    },
+
+    /**
+     * @return {?WebInspector.RemoteObject}
+     */
+    originalHandler: function()
+    {
+        return this._originalHandler;
+    },
+
+    /**
+     * @return {?WebInspector.RemoteObject}
+     */
+    removeFunction: function()
+    {
+        return this._removeFunction;
+    },
+
+    /**
+     * @return {!Promise<undefined>}
+     */
+    remove: function()
+    {
+        if (!this._removeFunction)
+            return Promise.resolve();
+        return this._removeFunction.callFunctionPromise(callCustomRemove, [
+            WebInspector.RemoteObject.toCallArgument(this._type),
+            WebInspector.RemoteObject.toCallArgument(this._originalHandler),
+            WebInspector.RemoteObject.toCallArgument(this._useCapture),
+            WebInspector.RemoteObject.toCallArgument(this._passive),
+        ]).then(() => undefined);
+
+        /**
+         * @param {string} type
+         * @param {function()} listener
+         * @param {boolean} useCapture
+         * @param {boolean} passive
+         * @this {Function}
+         * @suppressReceiverCheck
+         */
+        function callCustomRemove(type, listener, useCapture, passive)
+        {
+            this.call(null, type, listener, useCapture, passive);
+        }
+    },
+
+    /**
+     * @return {!Promise<undefined>}
+     */
+    togglePassive: function()
+    {
+        return new Promise(promiseConstructor.bind(this));
+
+        /**
+         * @param {function()} success
+         * @this {WebInspector.EventListener}
+         */
+        function promiseConstructor(success)
+        {
+            this._eventTarget.callFunctionPromise(callTogglePassive, [
+                WebInspector.RemoteObject.toCallArgument(this._type),
+                WebInspector.RemoteObject.toCallArgument(this._originalHandler),
+                WebInspector.RemoteObject.toCallArgument(this._useCapture),
+                WebInspector.RemoteObject.toCallArgument(this._passive),
+            ]).then(success);
+
+            /**
+             * @param {string} type
+             * @param {function()} listener
+             * @param {boolean} useCapture
+             * @param {boolean} passive
+             * @this {Object}
+             * @suppressReceiverCheck
+             */
+            function callTogglePassive(type, listener, useCapture, passive)
+            {
+                this.removeEventListener(type, listener, {capture: useCapture});
+                this.addEventListener(type, listener, {capture: useCapture, passive: !passive});
+            }
+        }
+    },
+
+    /**
+     * @return {string}
+     */
+    listenerType: function()
+    {
+        return this._listenerType;
+    },
+
+    /**
+     * @param {string} listenerType
+     */
+    setListenerType: function(listenerType)
+    {
+        this._listenerType = listenerType;
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isScrollBlockingType: function()
+    {
+        return this._type === "touchstart" || this._type === "touchmove" || this._type === "mousewheel" || this._type === "wheel";
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isNormalListenerType: function()
+    {
+        return this._listenerType === "normal";
     },
 
     __proto__: WebInspector.SDKObject.prototype

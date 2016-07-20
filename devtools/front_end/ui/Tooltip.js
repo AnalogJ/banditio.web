@@ -9,12 +9,15 @@
 WebInspector.Tooltip = function(doc)
 {
     this.element = doc.body.createChild("div");
-    this._shadowRoot = WebInspector.createShadowRootWithCoreStyles(this.element);
-    this._shadowRoot.appendChild(WebInspector.Widget.createStyleElement("ui/tooltip.css"));
+    this._shadowRoot = WebInspector.createShadowRootWithCoreStyles(this.element, "ui/tooltip.css");
 
     this._tooltipElement = this._shadowRoot.createChild("div", "tooltip");
     doc.addEventListener("mousemove", this._mouseMove.bind(this), true);
     doc.addEventListener("mousedown", this._hide.bind(this, true), true);
+    doc.addEventListener("mouseleave", this._hide.bind(this, false), true);
+    doc.addEventListener("keydown", this._hide.bind(this, true), true);
+    WebInspector.zoomManager.addEventListener(WebInspector.ZoomManager.Events.ZoomChanged, this._reset, this);
+    doc.defaultView.addEventListener("resize", this._reset.bind(this), false);
 }
 
 WebInspector.Tooltip.Timing = {
@@ -24,28 +27,25 @@ WebInspector.Tooltip.Timing = {
     "OpeningDelay": 600
 }
 
-WebInspector.Tooltip.AlignmentOverride = {
-    Right: "Right"
-}
-
 WebInspector.Tooltip.prototype = {
     /**
      * @param {!Event} event
      */
     _mouseMove: function(event)
     {
-        var path = event.deepPath ? event.deepPath : event.path;
-        if (!path || event.buttons !== 0)
+        var mouseEvent = /** @type {!MouseEvent} */ (event);
+        var path = mouseEvent.path;
+        if (!path || mouseEvent.buttons !== 0 || (mouseEvent.movementX === 0 && mouseEvent.movementY === 0))
             return;
 
         if (this._anchorElement && path.indexOf(this._anchorElement) === -1)
-            this._hide();
+            this._hide(false);
 
         for (var element of path) {
             if (element === this._anchorElement) {
                 return;
             } else if (element[WebInspector.Tooltip._symbol]) {
-                this._show(element);
+                this._show(element, mouseEvent);
                 return;
             }
         }
@@ -53,22 +53,33 @@ WebInspector.Tooltip.prototype = {
 
     /**
      * @param {!Element} anchorElement
+     * @param {!Event} event
      */
-    _show: function(anchorElement)
+    _show: function(anchorElement, event)
     {
         var tooltip = anchorElement[WebInspector.Tooltip._symbol];
         this._anchorElement = anchorElement;
         this._tooltipElement.removeChildren();
+
+        // Check if native tooltips should be used.
+        for (var element of WebInspector.Tooltip._nativeOverrideContainer) {
+            if (this._anchorElement.isSelfOrDescendant(element)) {
+                Object.defineProperty(this._anchorElement, "title", WebInspector.Tooltip._nativeTitle);
+                this._anchorElement.title = tooltip.content;
+                return;
+            }
+        }
+
         if (typeof tooltip.content === "string")
-            this._tooltipElement.textContent = tooltip.content;
+            this._tooltipElement.setTextContentTruncatedIfNeeded(tooltip.content);
         else
             this._tooltipElement.appendChild(tooltip.content);
 
         if (tooltip.actionId) {
             var shortcuts = WebInspector.shortcutRegistry.shortcutDescriptorsForAction(tooltip.actionId);
-            if (shortcuts && shortcuts.length) {
+            for (var shortcut of shortcuts) {
                 var shortcutElement = this._tooltipElement.createChild("div", "tooltip-shortcut");
-                shortcutElement.textContent = shortcuts[0].name;
+                shortcutElement.textContent = shortcut.name;
             }
         }
 
@@ -94,20 +105,29 @@ WebInspector.Tooltip.prototype = {
         var anchorBox = this._anchorElement.boxInWindow(this.element.window());
         const anchorOffset = 2;
         const pageMargin = 2;
+        var cursorOffset = 10;
+        this._tooltipElement.classList.toggle("tooltip-breakword", !this._tooltipElement.textContent.match("\\s"));
         this._tooltipElement.style.maxWidth = (containerOffsetWidth - pageMargin * 2) + "px";
+        this._tooltipElement.style.maxHeight = "";
         var tooltipWidth = this._tooltipElement.offsetWidth;
         var tooltipHeight = this._tooltipElement.offsetHeight;
-        var tooltipX = anchorBox.x;
+        var anchorTooltipAtElement = this._anchorElement.nodeName === "BUTTON" || this._anchorElement.nodeName === "LABEL";
+        var tooltipX = anchorTooltipAtElement ? anchorBox.x : event.x + cursorOffset;
         tooltipX = Number.constrain(tooltipX,
             containerOffset.x + pageMargin,
             containerOffset.x + containerOffsetWidth - tooltipWidth - pageMargin);
-        var onBottom = anchorBox.y + anchorOffset + anchorBox.height + tooltipHeight < containerOffset.y + containerOffsetHeight;
-        var tooltipY = onBottom ? anchorBox.y + anchorBox.height + anchorOffset : anchorBox.y - tooltipHeight - anchorOffset;
+        var tooltipY;
+        if (!anchorTooltipAtElement) {
+            tooltipY = event.y + cursorOffset + tooltipHeight < containerOffset.y + containerOffsetHeight ? event.y + cursorOffset : event.y - tooltipHeight;
+        } else {
+            var onBottom = anchorBox.y + anchorOffset + anchorBox.height + tooltipHeight < containerOffset.y + containerOffsetHeight;
+            tooltipY = onBottom ? anchorBox.y + anchorBox.height + anchorOffset : anchorBox.y - tooltipHeight - anchorOffset;
+        }
         this._tooltipElement.positionAt(tooltipX, tooltipY);
     },
 
     /**
-     * @param {boolean=} removeInstant
+     * @param {boolean} removeInstant
      */
     _hide: function(removeInstant)
     {
@@ -117,6 +137,14 @@ WebInspector.Tooltip.prototype = {
             this._tooltipLastClosed = Date.now();
         if (removeInstant)
             delete this._tooltipLastClosed;
+    },
+
+    _reset: function()
+    {
+        this._hide(true);
+        this._tooltipElement.positionAt(0, 0);
+        this._tooltipElement.style.maxWidth = "0";
+        this._tooltipElement.style.maxHeight = "0";
     }
 }
 
@@ -134,15 +162,28 @@ WebInspector.Tooltip.installHandler = function(doc)
  * @param {!Element} element
  * @param {!Element|string} tooltipContent
  * @param {string=} actionId
+ * @param {!Object=} options
  */
-WebInspector.Tooltip.install = function(element, tooltipContent, actionId)
+WebInspector.Tooltip.install = function(element, tooltipContent, actionId, options)
 {
     if (typeof tooltipContent === "string" && tooltipContent === "") {
         delete element[WebInspector.Tooltip._symbol];
         return;
     }
-    element[WebInspector.Tooltip._symbol] =  { content: tooltipContent, actionId: actionId };
+    element[WebInspector.Tooltip._symbol] = { content: tooltipContent, actionId: actionId, options: options || {} };
 }
+
+/**
+ * @param {!Element} element
+ */
+WebInspector.Tooltip.addNativeOverrideContainer = function(element)
+{
+    WebInspector.Tooltip._nativeOverrideContainer.push(element);
+}
+
+/** @type {!Array.<!Element>} */
+WebInspector.Tooltip._nativeOverrideContainer = [];
+WebInspector.Tooltip._nativeTitle = /** @type {!ObjectPropertyDescriptor} */(Object.getOwnPropertyDescriptor(HTMLElement.prototype, "title"));
 
 Object.defineProperty(HTMLElement.prototype, "title", {
     /**

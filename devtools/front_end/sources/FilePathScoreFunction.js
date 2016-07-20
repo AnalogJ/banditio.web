@@ -42,29 +42,10 @@ WebInspector.FilePathScoreFunction = function(query)
     this._fileNameIndex = 0;
 }
 
-/**
- * @param {string} query
- * @return {!RegExp}
- */
-WebInspector.FilePathScoreFunction.filterRegex = function(query)
-{
-    const toEscape = String.regexSpecialCharacters();
-    var regexString = "";
-    for (var i = 0; i < query.length; ++i) {
-        var c = query.charAt(i);
-        if (toEscape.indexOf(c) !== -1)
-            c = "\\" + c;
-        if (i)
-            regexString += "[^" + c + "]*";
-        regexString += c;
-    }
-    return new RegExp(regexString, "i");
-}
-
 WebInspector.FilePathScoreFunction.prototype = {
     /**
      * @param {string} data
-     * @param {?Array.<!Number>} matchIndexes
+     * @param {?Array<number>} matchIndexes
      * @return {number}
      */
     score: function(data, matchIndexes)
@@ -117,7 +98,7 @@ WebInspector.FilePathScoreFunction.prototype = {
      * @param {!Int32Array} sequence
      * @param {number} n
      * @param {number} m
-     * @param {!Array.<!Number>} out
+     * @param {!Array<number>} out
      */
     _restoreMatchIndexes: function(sequence, n, m, out)
     {
@@ -149,7 +130,7 @@ WebInspector.FilePathScoreFunction.prototype = {
         var isWordStart = this._testWordStart(data, j);
         var isFileName = j > this._fileNameIndex;
         var isPathTokenStart = j === 0 || data[j - 1] === "/";
-        var isCapsMatch = query[i] === data[j] && query[i] == this._queryUpperCase[i];
+        var isCapsMatch = query[i] === data[j] && query[i] === this._queryUpperCase[i];
         var score = 10;
         if (isPathTokenStart)
             score += 4;

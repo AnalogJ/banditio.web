@@ -34,7 +34,7 @@
 WebInspector.TimelineGrid = function()
 {
     this.element = createElement("div");
-    this.element.appendChild(WebInspector.Widget.createStyleElement("ui_lazy/timelineGrid.css"));
+    WebInspector.appendStyle(this.element, "ui_lazy/timelineGrid.css");
 
     this._dividersElement = this.element.createChild("div", "resources-dividers");
 
@@ -44,8 +44,8 @@ WebInspector.TimelineGrid = function()
     this._dividersLabelBarElement = this._gridHeaderElement.createChild("div", "resources-dividers-label-bar");
     this.element.appendChild(this._gridHeaderElement);
 
-    this._leftCurtainElement = this.element.createChild("div", "timeline-cpu-curtain-left");
-    this._rightCurtainElement = this.element.createChild("div", "timeline-cpu-curtain-right");
+    this._leftCurtainElement = this.element.createChild("div", "timeline-curtain-left");
+    this._rightCurtainElement = this.element.createChild("div", "timeline-curtain-right");
 }
 
 /**
@@ -138,7 +138,7 @@ WebInspector.TimelineGrid.drawCanvasGrid = function(canvas, calculator, dividerO
         var position = calculator.computePosition(time);
         context.beginPath();
         if (!printDeltas || i !== 0 && position - lastPosition > minWidthForTitle) {
-            var text = printDeltas ? calculator.formatTime(calculator.zeroTime() + time - lastTime) : calculator.formatTime(time, precision);
+            var text = printDeltas ? calculator.formatValue(calculator.zeroTime() + time - lastTime) : calculator.formatValue(time, precision);
             var textWidth = context.measureText(text).width;
             var textPosition = printDeltas ? (position + lastPosition - textWidth) / 2 : position - textWidth - paddingRight;
             context.fillText(text, textPosition, paddingTop);
@@ -203,7 +203,7 @@ WebInspector.TimelineGrid.prototype = {
 
             var time = dividerOffsets[i];
             var position = calculator.computePosition(time);
-            dividerLabelBar._labelElement.textContent = calculator.formatTime(time, precision);
+            dividerLabelBar._labelElement.textContent = calculator.formatValue(time, precision);
 
             var percentLeft = 100 * position / dividersElementClientWidth;
             divider.style.left = percentLeft + "%";
@@ -278,14 +278,14 @@ WebInspector.TimelineGrid.prototype = {
     },
 
     /**
-     * @param {number} gapOffset
-     * @param {number} gapWidth
+     * @param {number} left
+     * @param {number} right
      */
-    showCurtains: function(gapOffset, gapWidth)
+    showCurtains: function(left, right)
     {
-        this._leftCurtainElement.style.width = gapOffset + "px";
+        this._leftCurtainElement.style.width = (100 * left).toFixed(2) + "%";
         this._leftCurtainElement.classList.remove("hidden");
-        this._rightCurtainElement.style.left = (gapOffset + gapWidth) + "px";
+        this._rightCurtainElement.style.width = (100 * (1 - right)).toFixed(2) + "%";
         this._rightCurtainElement.classList.remove("hidden");
     },
 
@@ -323,7 +323,7 @@ WebInspector.TimelineGrid.Calculator.prototype = {
      * @param {number=} precision
      * @return {string}
      */
-    formatTime: function(time, precision) { },
+    formatValue: function(time, precision) { },
 
     /** @return {number} */
     minimumBoundary: function() { },

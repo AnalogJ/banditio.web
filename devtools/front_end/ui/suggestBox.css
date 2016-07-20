@@ -58,6 +58,11 @@
     flex: 0 0 auto;
 }
 
+.suggest-box-container {
+    display: flex;
+    flex-direction: row;
+}
+
 .suggest-box {
     background-color: #FFFFFF;
     border: 1px solid rgb(66%, 66%, 66%);
@@ -86,6 +91,30 @@
     white-space: nowrap;
 }
 
+.suggest-box .suggest-box-content-item.additional {
+    background-color: #f9f9f9;
+}
+
+.suggest-box .suggest-box-content-item.additional::before {
+    display: inline-block;
+    content: "";
+    -webkit-user-select: none;
+    background-image: url(Images/toolbarButtonGlyphs.png);
+    background-size: 352px 168px;
+    width: 10px;
+    height: 10px;
+    position: relative;
+    top: 2px;
+    margin-right: 4px;
+    background-position: -192px -96px;
+}
+
+@media (-webkit-min-device-pixel-ratio: 1.5) {
+.suggest-box .suggest-box-content-item.additional::before {
+    background-image: url(Images/toolbarButtonGlyphs_2x.png);
+}
+} /* media */
+
 .suggest-box .suggest-box-content-item .prefix {
     font-weight: bold;
 }
@@ -101,4 +130,17 @@
 
 .suggest-box .suggest-box-content-item:hover:not(.selected) {
     border: 1px solid rgb(204, 204, 204);
+}
+
+.suggest-box .details-popup {
+    padding: 17px;
+    pointer-events: auto;
+    margin-left: 3px;
+    max-width: 750px;
+    word-wrap: normal;
+}
+
+.suggest-box .details-popup .description {
+    margin-top: 22px;
+    color: #808080;
 }

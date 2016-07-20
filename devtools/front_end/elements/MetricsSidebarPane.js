@@ -67,7 +67,7 @@ WebInspector.MetricsSidebarPane.prototype = {
             this._updateMetrics(style);
         }
         /**
-         * @param {?WebInspector.CSSStyleModel.InlineStyleResult} inlineStyleResult
+         * @param {?WebInspector.CSSModel.InlineStyleResult} inlineStyleResult
          * @this {WebInspector.MetricsSidebarPane}
          */
         function inlineStyleCallback(inlineStyleResult)
@@ -86,23 +86,7 @@ WebInspector.MetricsSidebarPane.prototype = {
     /**
      * @override
      */
-    onDOMModelChanged: function()
-    {
-        this.update();
-    },
-
-    /**
-     * @override
-     */
     onCSSModelChanged: function()
-    {
-        this.update();
-    },
-
-    /**
-     * @override
-     */
-    onFrameResizedThrottled: function()
     {
         this.update();
     },
@@ -458,19 +442,18 @@ WebInspector.MetricsSidebarPane.prototype = {
         this.inlineStyle.appendProperty(context.styleProperty, userInput, callback.bind(this));
 
         /**
-         * @param {?WebInspector.CSSStyleDeclaration} style
+         * @param {boolean} success
          * @this {WebInspector.MetricsSidebarPane}
          */
-        function callback(style)
+        function callback(success)
         {
-            if (!style)
+            if (!success)
                 return;
-            this.inlineStyle = style;
             if (!("originalPropertyData" in this))
                 this.originalPropertyData = this.previousPropertyDataCandidate;
 
             if (typeof this._highlightMode !== "undefined")
-                this._node.highlight(this._highlightMode);
+                this.node().highlight(this._highlightMode);
 
             if (commitEditor)
                 this.update();

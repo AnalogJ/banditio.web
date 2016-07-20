@@ -10,9 +10,8 @@
  */
 WebInspector.CSSParser = function()
 {
-    this._worker = new WorkerRuntime.Worker("script_formatter_worker");
-    this._worker.onmessage = this._onRuleChunk.bind(this);
     this._rules = [];
+    this._terminated = false;
 }
 
 WebInspector.CSSParser.Events = {
@@ -28,7 +27,7 @@ WebInspector.CSSParser.prototype = {
     {
         this._lock();
         this._finishedCallback = callback;
-        styleSheetHeader.requestContent(this._innerParse.bind(this));
+        styleSheetHeader.requestContent().then(this._innerParse.bind(this));
     },
 
     /**
@@ -42,12 +41,31 @@ WebInspector.CSSParser.prototype = {
         this._innerParse(text);
     },
 
+    /**
+     * @param {string} text
+     * @return {!Promise<!Array.<!WebInspector.CSSParser.Rule>>}
+     */
+    parsePromise: function(text)
+    {
+        return new Promise(promiseConstructor.bind(this));
+
+        /**
+         * @param {function()} succ
+         * @param {function()} fail
+         * @this {WebInspector.CSSParser}
+         */
+        function promiseConstructor(succ, fail)
+        {
+            this.parse(text, succ);
+        }
+    },
+
     dispose: function()
     {
-        if (this._worker) {
-            this._worker.terminate();
-            delete this._worker;
-        }
+        if (this._terminated)
+            return;
+        this._terminated = true;
+        this._runFinishedCallback([]);
     },
 
     /**
@@ -75,14 +93,22 @@ WebInspector.CSSParser.prototype = {
     _innerParse: function(text)
     {
         this._rules = [];
-        this._worker.postMessage({ method: "parseCSS", params: { content: text } });
+        var params = { content: text };
+        WebInspector.formatterWorkerPool.runChunkedTask("parseCSS", params, this._onRuleChunk.bind(this));
     },
 
     /**
-     * @param {!MessageEvent} event
+     * @param {?MessageEvent} event
      */
     _onRuleChunk: function(event)
     {
+        if (this._terminated)
+            return;
+        if (!event) {
+            this._onFinishedParsing();
+            this.dispatchEventToListeners(WebInspector.CSSParser.Events.RulesParsed);
+            return;
+        }
         var data = /** @type {!WebInspector.CSSParser.DataChunk} */ (event.data);
         var chunk = data.chunk;
         for (var i = 0; i < chunk.length; ++i)
@@ -96,8 +122,18 @@ WebInspector.CSSParser.prototype = {
     _onFinishedParsing: function()
     {
         this._unlock();
-        if (this._finishedCallback)
-            this._finishedCallback(this._rules);
+        this._runFinishedCallback(this._rules);
+    },
+
+    /**
+     * @param {!Array<!WebInspector.CSSRule>} rules
+     */
+    _runFinishedCallback: function(rules)
+    {
+        var callback = this._finishedCallback;
+        delete this._finishedCallback;
+        if (callback)
+            callback.call(null, rules);
     },
 
     __proto__: WebInspector.Object.prototype,
@@ -109,9 +145,21 @@ WebInspector.CSSParser.prototype = {
 WebInspector.CSSParser.DataChunk;
 
 /**
- * @typedef {{selectorText: string, lineNumber: number, columnNumber: number, properties: !Array.<!WebInspector.CSSParser.Property>}}
+ * @constructor
  */
-WebInspector.CSSParser.StyleRule;
+WebInspector.CSSParser.StyleRule = function()
+{
+    /** @type {string} */
+    this.selectorText;
+    /** @type {!WebInspector.CSSParser.Range} */
+    this.styleRange;
+    /** @type {number} */
+    this.lineNumber;
+    /** @type {number} */
+    this.columnNumber;
+    /** @type {!Array.<!WebInspector.CSSParser.Property>} */
+    this.properties;
+}
 
 /**
  * @typedef {{atRule: string, lineNumber: number, columnNumber: number}}
@@ -124,6 +172,25 @@ WebInspector.CSSParser.AtRule;
 WebInspector.CSSParser.Rule;
 
 /**
- * @typedef {{name: string, value: string}}
+ * @typedef {{startLine: number, startColumn: number, endLine: number, endColumn: number}}
  */
-WebInspector.CSSParser.Property;
+WebInspector.CSSParser.Range;
+
+/**
+ * @constructor
+ */
+WebInspector.CSSParser.Property = function()
+{
+    /** @type {string} */
+    this.name;
+    /** @type {!WebInspector.CSSParser.Range} */
+    this.nameRange;
+    /** @type {string} */
+    this.value;
+    /** @type {!WebInspector.CSSParser.Range} */
+    this.valueRange;
+    /** @type {!WebInspector.CSSParser.Range} */
+    this.range;
+    /** @type {(boolean|undefined)} */
+    this.disabled;
+}

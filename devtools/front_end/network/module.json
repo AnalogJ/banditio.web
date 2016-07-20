@@ -4,7 +4,7 @@
             "type": "@WebInspector.PanelFactory",
             "name": "network",
             "title": "Network",
-            "order": 1,
+            "order": 40,
             "className": "WebInspector.NetworkPanelFactory"
         },
         {
@@ -20,19 +20,61 @@
         {
             "type": "setting",
             "category": "Network",
-            "title": "Show primary load waterfall",
-            "settingName": "networkShowPrimaryLoadWaterfall",
-            "settingType": "boolean",
-            "experiment": "showPrimaryLoadWaterfallInNetworkTimeline",
-            "defaultValue": false
-        },
-        {
-            "type": "setting",
-            "category": "Network",
             "title": "Color-code resource types",
             "settingName": "networkColorCodeResourceTypes",
             "settingType": "boolean",
-            "defaultValue": false
+            "defaultValue": false,
+            "tags": "color code, resource type",
+            "options": [
+                { "value": true, "title": "Color code by resource type" },
+                { "value": false, "title": "Use default colors" }
+            ]
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "network.blocked-urls.show",
+            "className": "WebInspector.BlockedURLsPane.ActionDelegate",
+            "iconClass": "block-toolbar-item",
+            "title": "Block network requests"
+        },
+        {
+            "type": "@WebInspector.ActionDelegate",
+            "actionId": "network.toggle-recording",
+            "iconClass": "record-toolbar-item",
+            "contextTypes": ["WebInspector.NetworkPanel"],
+            "className": "WebInspector.NetworkPanel.RecordActionDelegate",
+            "options": [
+                { "value": true, "title": "Record network log" },
+                { "value": false, "title": "Stop recording network log" }
+            ],
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+E"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+E"
+                }
+            ]
+        },
+        {
+            "type": "drawer-view",
+            "name": "network.blocked-urls",
+            "title": "Request blocking",
+            "persistence": "closeable",
+            "order": 60,
+            "className": "WebInspector.BlockedURLsPane",
+            "experiment": "requestBlocking"
+        },
+        {
+            "type": "drawer-view",
+            "name": "network.config",
+            "title": "Network conditions",
+            "persistence": "closeable",
+            "order": 40,
+            "className": "WebInspector.NetworkConfigView",
+            "tags": "disk cache, network throttling, useragent, user agent"
         }
     ],
     "dependencies": [
@@ -42,19 +84,22 @@
         "ui_lazy"
     ],
     "scripts": [
+        "BlockedURLsPane.js",
         "EventSourceMessagesView.js",
         "FilterSuggestionBuilder.js",
         "HARWriter.js",
+        "JSONView.js",
         "RequestView.js",
+        "NetworkConfigView.js",
         "NetworkDataGridNode.js",
         "NetworkItemView.js",
         "NetworkTimeCalculator.js",
         "NetworkLogView.js",
+        "NetworkLogViewColumns.js",
         "NetworkOverview.js",
         "RequestCookiesView.js",
         "RequestHeadersView.js",
         "RequestHTMLView.js",
-        "RequestJSONView.js",
         "RequestPreviewView.js",
         "RequestResponseView.js",
         "RequestTimingView.js",
@@ -63,7 +108,9 @@
         "XMLView.js"
     ],
     "resources": [
+        "blockedURLsPane.css",
         "eventSourceMessagesView.css",
+        "networkConfigView.css",
         "networkLogView.css",
         "networkPanel.css",
         "requestCookiesView.css",

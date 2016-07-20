@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/* eslint-disable indent */
 (function(window) {
 
 // DevToolsAPI ----------------------------------------------------------------
@@ -113,6 +114,24 @@ DevToolsAPIImpl.prototype = {
     },
 
     /**
+     * @param {boolean} discoverUsbDevices
+     * @param {boolean} portForwardingEnabled
+     * @param {!Adb.PortForwardingConfig} portForwardingConfig
+     */
+    devicesDiscoveryConfigChanged: function(discoverUsbDevices, portForwardingEnabled, portForwardingConfig)
+    {
+        this._dispatchOnInspectorFrontendAPI("devicesDiscoveryConfigChanged", [discoverUsbDevices, portForwardingEnabled, portForwardingConfig]);
+    },
+
+    /**
+     * @param {!Adb.PortForwardingStatus} status
+     */
+    devicesPortForwardingStatusChanged: function(status)
+    {
+        this._dispatchOnInspectorFrontendAPI("devicesPortForwardingStatusChanged", [status]);
+    },
+
+    /**
      * @param {!Array.<!Adb.Device>} devices
      */
     devicesUpdated: function(devices)
@@ -143,6 +162,15 @@ DevToolsAPIImpl.prototype = {
     },
 
     /**
+     * @param {number} callId
+     * @param {string} script
+     */
+    evaluateForTestInFrontend: function(callId, script)
+    {
+        this._dispatchOnInspectorFrontendAPI("evaluateForTestInFrontend", [callId, script]);
+    },
+
+    /**
      * @param {!Array.<!{fileSystemName: string, rootURL: string, fileSystemPath: string}>} fileSystems
      */
     fileSystemsLoaded: function(fileSystems)
@@ -159,12 +187,16 @@ DevToolsAPIImpl.prototype = {
     },
 
     /**
-     * @param {string} errorMessage
      * @param {!{fileSystemName: string, rootURL: string, fileSystemPath: string}} fileSystem
      */
-    fileSystemAdded: function(errorMessage, fileSystem)
+    fileSystemAdded: function(fileSystem)
     {
-        this._dispatchOnInspectorFrontendAPI("fileSystemAdded", [errorMessage, fileSystem]);
+        this._dispatchOnInspectorFrontendAPI("fileSystemAdded", ["", fileSystem]);
+    },
+
+    fileSystemFilesChanged: function(path)
+    {
+        this._dispatchOnInspectorFrontendAPI("fileSystemFilesChanged", [path]);
     },
 
     /**
@@ -197,10 +229,11 @@ DevToolsAPIImpl.prototype = {
     },
 
     /**
-     * @param {{type: string, keyIdentifier: string, keyCode: number, modifiers: number}} event
+     * @param {{type: string, key: string, code: string, keyCode: number, modifiers: number}} event
      */
     keyEventUnhandled: function(event)
     {
+        event.keyIdentifier = keyCodeToKeyIdentifier(event.keyCode);
         this._dispatchOnInspectorFrontendAPI("keyEventUnhandled", [event]);
     },
 
@@ -260,18 +293,39 @@ DevToolsAPIImpl.prototype = {
         this._dispatchOnInspectorFrontendAPI("setUseSoftMenu", [useSoftMenu]);
     },
 
-    showConsole: function()
+    /**
+     * @param {string} panelName
+     */
+    showPanel: function(panelName)
     {
-        this._dispatchOnInspectorFrontendAPI("showConsole", []);
+        this._dispatchOnInspectorFrontendAPI("showPanel", [panelName]);
     },
 
     /**
      * @param {number} id
      * @param {string} chunk
+     * @param {boolean} encoded
      */
-    streamWrite: function(id, chunk)
+    streamWrite: function(id, chunk, encoded)
     {
-        this._dispatchOnInspectorFrontendAPI("streamWrite", [id, chunk]);
+        this._dispatchOnInspectorFrontendAPI("streamWrite", [id, encoded ? this._decodeBase64(chunk) : chunk]);
+    },
+
+    /**
+     * @param {string} chunk
+     * @return {string}
+     */
+    _decodeBase64: function(chunk)
+    {
+        var request = new XMLHttpRequest();
+        request.open("GET", "data:text/plain;base64," + chunk, false);
+        request.send(null);
+        if (request.status === 200) {
+            return request.responseText;
+        } else {
+            console.error("Error while decoding chunk in streamWrite");
+            return "";
+        }
     }
 }
 
@@ -480,7 +534,7 @@ InspectorFrontendHostImpl.prototype = {
      */
     sendMessageToBackend: function(message)
     {
-        DevToolsHost.sendMessageToBackend(message);
+        DevToolsAPI.sendMessageToEmbedder("dispatchProtocolMessage", [message], null);
     },
 
     /**
@@ -491,6 +545,9 @@ InspectorFrontendHostImpl.prototype = {
      */
     recordEnumeratedHistogram: function(actionName, actionCode, bucketSize)
     {
+        // Support for M49 frontend.
+        if (actionName === "DevTools.DrawerShown")
+            return;
         DevToolsAPI.sendMessageToEmbedder("recordEnumeratedHistogram", [actionName, actionCode, bucketSize], null);
     },
 
@@ -504,10 +561,11 @@ InspectorFrontendHostImpl.prototype = {
 
     /**
      * @override
+     * @param {string=} fileSystemPath
      */
-    addFileSystem: function()
+    addFileSystem: function(fileSystemPath)
     {
-        DevToolsAPI.sendMessageToEmbedder("addFileSystem", [], null);
+        DevToolsAPI.sendMessageToEmbedder("addFileSystem", [fileSystemPath || ""], null);
     },
 
     /**
@@ -622,11 +680,50 @@ InspectorFrontendHostImpl.prototype = {
 
     /**
      * @override
+     */
+    readyForTest: function()
+    {
+        DevToolsAPI.sendMessageToEmbedder("readyForTest", [], null);
+    },
+
+    /**
+     * @override
+     * @param {boolean} discoverUsbDevices
+     * @param {boolean} portForwardingEnabled
+     * @param {!Adb.PortForwardingConfig} portForwardingConfig
+     */
+    setDevicesDiscoveryConfig: function(discoverUsbDevices, portForwardingEnabled, portForwardingConfig)
+    {
+        DevToolsAPI.sendMessageToEmbedder("setDevicesDiscoveryConfig", [discoverUsbDevices, portForwardingEnabled, JSON.stringify(portForwardingConfig)], null);
+    },
+
+    /**
+     * @override
      * @param {boolean} enabled
      */
     setDevicesUpdatesEnabled: function(enabled)
     {
         DevToolsAPI.sendMessageToEmbedder("setDevicesUpdatesEnabled", [enabled], null);
+    },
+
+    /**
+     * @override
+     * @param {string} pageId
+     * @param {string} action
+     */
+    performActionOnRemotePage: function(pageId, action)
+    {
+        DevToolsAPI.sendMessageToEmbedder("performActionOnRemotePage", [pageId, action], null);
+    },
+
+    /**
+     * @override
+     * @param {string} browserId
+     * @param {string} url
+     */
+    openRemotePage: function(browserId, url)
+    {
+        DevToolsAPI.sendMessageToEmbedder("openRemotePage", [browserId, url], null);
     },
 
     /**
@@ -651,6 +748,14 @@ InspectorFrontendHostImpl.prototype = {
     },
 
     // Backward-compatible methods below this line --------------------------------------------
+
+    /**
+     * Support for legacy front-ends (<M50).
+     * @param {string} message
+     */
+    sendFrontendAPINotification: function(message)
+    {
+    },
 
     /**
      * Support for legacy front-ends (<M41).
@@ -777,13 +882,222 @@ window.InspectorFrontendHost = new InspectorFrontendHostImpl();
 
 // DevToolsApp ---------------------------------------------------------------
 
+function installObjectObserve()
+{
+    var properties = [
+        "advancedSearchConfig", "auditsPanelSplitViewState", "auditsSidebarWidth", "blockedURLs", "breakpoints", "cacheDisabled", "colorFormat", "consoleHistory",
+        "consoleTimestampsEnabled", "cpuProfilerView", "cssSourceMapsEnabled", "currentDockState", "customColorPalette", "customDevicePresets", "customEmulatedDeviceList",
+        "customFormatters", "customUserAgent", "databaseTableViewVisibleColumns", "dataGrid-cookiesTable", "dataGrid-DOMStorageItemsView", "debuggerSidebarHidden", "disableDataSaverInfobar",
+        "disablePausedStateOverlay", "domBreakpoints", "domWordWrap", "elementsPanelSplitViewState", "elementsSidebarWidth", "emulation.deviceHeight", "emulation.deviceModeValue",
+        "emulation.deviceOrientationOverride", "emulation.deviceScale", "emulation.deviceScaleFactor", "emulation.deviceUA", "emulation.deviceWidth", "emulation.geolocationOverride",
+        "emulation.showDeviceMode", "emulation.showRulers", "enableAsyncStackTraces", "eventListenerBreakpoints", "fileMappingEntries", "fileSystemMapping", "FileSystemViewSidebarWidth",
+        "fileSystemViewSplitViewState", "filterBar-consoleView", "filterBar-networkPanel", "filterBar-promisePane", "filterBar-timelinePanel", "frameViewerHideChromeWindow",
+        "heapSnapshotRetainersViewSize", "heapSnapshotSplitViewState", "hideCollectedPromises", "hideNetworkMessages", "highlightNodeOnHoverInOverlay", "highResolutionCpuProfiling",
+        "inlineVariableValues", "Inspector.drawerSplitView", "Inspector.drawerSplitViewState", "InspectorView.panelOrder", "InspectorView.screencastSplitView",
+        "InspectorView.screencastSplitViewState", "InspectorView.splitView", "InspectorView.splitViewState", "javaScriptDisabled", "jsSourceMapsEnabled", "lastActivePanel", "lastDockState",
+        "lastSelectedSourcesSidebarPaneTab", "lastSnippetEvaluationIndex", "layerDetailsSplitView", "layerDetailsSplitViewState", "layersPanelSplitViewState", "layersShowInternalLayers",
+        "layersSidebarWidth", "messageLevelFilters", "messageURLFilters", "monitoringXHREnabled", "navigatorGroupByFolder", "navigatorHidden", "networkColorCodeResourceTypes",
+        "networkConditions", "networkConditionsCustomProfiles", "networkHideDataURL", "networkLogColumnsVisibility", "networkLogLargeRows", "networkLogShowOverview",
+        "networkPanelSplitViewState", "networkRecordFilmStripSetting", "networkResourceTypeFilters", "networkShowPrimaryLoadWaterfall", "networkSidebarWidth", "openLinkHandler",
+        "pauseOnCaughtException", "pauseOnExceptionEnabled", "preserveConsoleLog", "prettyPrintInfobarDisabled", "previouslyViewedFiles", "profilesPanelSplitViewState",
+        "profilesSidebarWidth", "promiseStatusFilters", "recordAllocationStacks", "requestHeaderFilterSetting", "request-info-formData-category-expanded",
+        "request-info-general-category-expanded", "request-info-queryString-category-expanded", "request-info-requestHeaders-category-expanded",
+        "request-info-requestPayload-category-expanded", "request-info-responseHeaders-category-expanded", "resources", "resourcesLastSelectedItem", "resourcesPanelSplitViewState",
+        "resourcesSidebarWidth", "resourceViewTab", "savedURLs", "screencastEnabled", "scriptsPanelNavigatorSidebarWidth", "searchInContentScripts", "selectedAuditCategories",
+        "selectedColorPalette", "selectedProfileType", "shortcutPanelSwitch", "showAdvancedHeapSnapshotProperties", "showEventListenersForAncestors", "showFrameowkrListeners",
+        "showHeaSnapshotObjectsHiddenProperties", "showInheritedComputedStyleProperties", "showMediaQueryInspector", "showNativeFunctionsInJSProfile", "showUAShadowDOM",
+        "showWhitespacesInEditor", "sidebarPosition", "skipContentScripts", "skipStackFramesPattern", "sourceMapInfobarDisabled", "sourcesPanelDebuggerSidebarSplitViewState",
+        "sourcesPanelNavigatorSplitViewState", "sourcesPanelSplitSidebarRatio", "sourcesPanelSplitViewState", "sourcesSidebarWidth", "standardEmulatedDeviceList",
+        "StylesPaneSplitRatio", "stylesPaneSplitViewState", "textEditorAutocompletion", "textEditorAutoDetectIndent", "textEditorBracketMatching", "textEditorIndent",
+        "timelineCaptureFilmStrip", "timelineCaptureLayersAndPictures", "timelineCaptureMemory", "timelineCaptureNetwork", "timeline-details", "timelineEnableJSSampling",
+        "timelineOverviewMode", "timelinePanelDetailsSplitViewState", "timelinePanelRecorsSplitViewState", "timelinePanelTimelineStackSplitViewState", "timelinePerspective",
+        "timeline-split", "timelineTreeGroupBy", "timeline-view", "timelineViewMode", "uiTheme", "watchExpressions", "WebInspector.Drawer.lastSelectedView", "WebInspector.Drawer.showOnLoad",
+        "workspaceExcludedFolders", "workspaceFolderExcludePattern", "workspaceInfobarDisabled", "workspaceMappingInfobarDisabled", "xhrBreakpoints"];
+
+    /**
+     * @this {!{_storage: Object, _name: string}}
+     */
+    function settingRemove()
+    {
+        this._storage[this._name] = undefined;
+    }
+
+    function objectObserve(object, observer)
+    {
+        if (window["WebInspector"]) {
+            var settingPrototype = window["WebInspector"]["Setting"]["prototype"];
+            if (typeof settingPrototype["remove"] === "function")
+                settingPrototype["remove"] = settingRemove;
+        }
+
+        var changedProperties = new Set();
+        var scheduled = false;
+
+        function scheduleObserver()
+        {
+            if (!scheduled) {
+                scheduled = true;
+                setImmediate(callObserver);
+            }
+        }
+
+        function callObserver()
+        {
+            scheduled = false;
+            var changes = [];
+            changedProperties.forEach(function(name) { changes.push({name: name}); });
+            changedProperties.clear();
+            observer.call(null, changes);
+        }
+
+        var storage = new Map();
+
+        function defineProperty(property)
+        {
+            if (property in object) {
+                storage.set(property, object[property]);
+                delete object[property];
+            }
+
+            Object.defineProperty(object, property, {
+                get: function()
+                {
+                    return storage.get(property);
+                },
+
+                set: function(value)
+                {
+                    storage.set(property, value);
+                    changedProperties.add(property);
+                    scheduleObserver();
+                }
+            });
+        }
+
+        for (var i = 0; i < properties.length; ++i)
+            defineProperty(properties[i]);
+    }
+
+    window.Object.observe = objectObserve;
+}
+
 /**
  * @suppressGlobalPropertiesCheck
  */
+function sanitizeRemoteFrontendUrl()
+{
+    var remoteBaseRegexp = /^https:\/\/chrome-devtools-frontend\.appspot\.com\/serve_file\/@[0-9a-zA-Z]+\/?$/;
+    var remoteFrontendUrlRegexp = /^https:\/\/chrome-devtools-frontend\.appspot\.com\/serve_rev\/@?[0-9a-zA-Z]+\/(devtools|inspector)\.html$/;
+    var queryParams = location.search;
+    if (!queryParams)
+        return;
+    var params = queryParams.substring(1).split("&");
+    for (var i = 0; i < params.length; ++i) {
+        var pair = params[i].split("=");
+        var name = pair.shift();
+        var value = pair.join("=");
+        if (name === "remoteFrontendUrl" && !remoteFrontendUrlRegexp.test(value))
+            location.search = "";
+        if (name === "remoteBase" && !remoteBaseRegexp.test(value))
+            location.search = "";
+    }
+}
+
+var staticKeyIdentifiers = new Map([
+    [0x12, "Alt"],
+    [0x11, "Control"],
+    [0x10, "Shift"],
+    [0x14, "CapsLock"],
+    [0x5b, "Win"],
+    [0x5c, "Win"],
+    [0x0c, "Clear"],
+    [0x28, "Down"],
+    [0x23, "End"],
+    [0x0a, "Enter"],
+    [0x0d, "Enter"],
+    [0x2b, "Execute"],
+    [0x70, "F1"],
+    [0x71, "F2"],
+    [0x72, "F3"],
+    [0x73, "F4"],
+    [0x74, "F5"],
+    [0x75, "F6"],
+    [0x76, "F7"],
+    [0x77, "F8"],
+    [0x78, "F9"],
+    [0x79, "F10"],
+    [0x7a, "F11"],
+    [0x7b, "F12"],
+    [0x7c, "F13"],
+    [0x7d, "F14"],
+    [0x7e, "F15"],
+    [0x7f, "F16"],
+    [0x80, "F17"],
+    [0x81, "F18"],
+    [0x82, "F19"],
+    [0x83, "F20"],
+    [0x84, "F21"],
+    [0x85, "F22"],
+    [0x86, "F23"],
+    [0x87, "F24"],
+    [0x2f, "Help"],
+    [0x24, "Home"],
+    [0x2d, "Insert"],
+    [0x25, "Left"],
+    [0x22, "PageDown"],
+    [0x21, "PageUp"],
+    [0x13, "Pause"],
+    [0x2c, "PrintScreen"],
+    [0x27, "Right"],
+    [0x91, "Scroll"],
+    [0x29, "Select"],
+    [0x26, "Up"],
+    [0x2e, "U+007F"], // Standard says that DEL becomes U+007F.
+    [0xb0, "MediaNextTrack"],
+    [0xb1, "MediaPreviousTrack"],
+    [0xb2, "MediaStop"],
+    [0xb3, "MediaPlayPause"],
+    [0xad, "VolumeMute"],
+    [0xae, "VolumeDown"],
+    [0xaf, "VolumeUp"],
+]);
+
+function keyCodeToKeyIdentifier(keyCode)
+{
+    var result = staticKeyIdentifiers.get(keyCode);
+    if (result !== undefined)
+        return result;
+    result = "U+";
+    var hexString = keyCode.toString(16).toUpperCase();
+    for (var i = hexString.length; i < 4; ++i)
+        result += "0";
+    result += hexString;
+    return result;
+}
+
+/**
+ * @suppressGlobalPropertiesCheck
+ * @suppress {checkTypes}
+ */
 function installBackwardsCompatibility()
 {
+    sanitizeRemoteFrontendUrl();
+
     if (window.location.search.indexOf("remoteFrontend") === -1)
         return;
+
+    // Support for legacy (<M53) frontends.
+    if (!window.KeyboardEvent.prototype.hasOwnProperty("keyIdentifier")) {
+        Object.defineProperty(window.KeyboardEvent.prototype, "keyIdentifier", {
+            get: function()
+            {
+                return keyCodeToKeyIdentifier(this.keyCode);
+            }
+        });
+    }
+
+    // Support for legacy (<M50) frontends.
+    installObjectObserve();
 
     /**
      * @this {CSSStyleDeclaration}
@@ -791,6 +1105,7 @@ function installBackwardsCompatibility()
     function getValue(property)
     {
         // Note that |property| comes from another context, so we can't use === here.
+        // eslint-disable-next-line eqeqeq
         if (property == "padding-left") {
             return {
                 /**
@@ -804,7 +1119,7 @@ function installBackwardsCompatibility()
         throw new Error("getPropertyCSSValue is undefined");
     }
 
-    // Support for legacy (<M41) frontends. Remove in M45.
+    // Support for legacy (<M41) frontends.
     window.CSSStyleDeclaration.prototype.getPropertyCSSValue = getValue;
 
     function CSSPrimitiveValue()
@@ -813,11 +1128,27 @@ function installBackwardsCompatibility()
     CSSPrimitiveValue.CSS_PX = 5;
     window.CSSPrimitiveValue = CSSPrimitiveValue;
 
-    // Support for legacy (<M44) frontends. Remove in M48.
+    // Support for legacy (<M44) frontends.
     var styleElement = window.document.createElement("style");
     styleElement.type = "text/css";
     styleElement.textContent = "html /deep/ * { min-width: 0; min-height: 0; }";
+
+    // Support for quirky border-image behavior (<M51), see:
+    // https://bugs.chromium.org/p/chromium/issues/detail?id=559258
+    styleElement.textContent += "\nhtml /deep/ .cm-breakpoint .CodeMirror-linenumber { border-style: solid !important; }";
+    styleElement.textContent += "\nhtml /deep/ .cm-breakpoint.cm-breakpoint-conditional .CodeMirror-linenumber { border-style: solid !important; }";
     window.document.head.appendChild(styleElement);
+
+    // Support for legacy (<M49) frontends.
+    Event.prototype.deepPath = undefined;
+
+    // Support for legacy (<53) frontends.
+    window.FileError = {
+        NOT_FOUND_ERR: DOMException.NOT_FOUND_ERR,
+        ABORT_ERR: DOMException.ABORT_ERR,
+        INVALID_MODIFICATION_ERR: DOMException.INVALID_MODIFICATION_ERR,
+        NOT_READABLE_ERR: 0  // No matching DOMException, so code will be 0.
+    };
 }
 
 function windowLoaded()
@@ -826,38 +1157,20 @@ function windowLoaded()
     installBackwardsCompatibility();
 }
 
+sanitizeRemoteFrontendUrl();
 if (window.document.head && (window.document.readyState === "complete" || window.document.readyState === "interactive"))
     installBackwardsCompatibility();
 else
     window.addEventListener("DOMContentLoaded", windowLoaded, false);
 
-// UITests ------------------------------------------------------------------
-
-if (window.domAutomationController) {
-    var uiTests = {};
-
-    uiTests._tryRun = function()
-    {
-        if (uiTests._testSuite && uiTests._pendingTestName) {
-            var name = uiTests._pendingTestName;
-            delete uiTests._pendingTestName;
-            uiTests._testSuite.runTest(name);
-        }
-    }
-
-    uiTests.runTest = function(name)
-    {
-        uiTests._pendingTestName = name;
-        uiTests._tryRun();
-    };
-
-    uiTests.testSuiteReady = function(testSuiteConstructor, testBase)
-    {
-        uiTests._testSuite = testSuiteConstructor(window.domAutomationController);
-        uiTests._tryRun();
-    };
-
-    window.uiTests = uiTests;
-}
-
 })(window);
+
+if (!DOMTokenList.prototype.__originalDOMTokenListToggle) {
+    DOMTokenList.prototype.__originalDOMTokenListToggle = DOMTokenList.prototype.toggle;
+    DOMTokenList.prototype.toggle = function(token, force)
+    {
+        if (arguments.length === 1)
+            force = !this.contains(token);
+        return this.__originalDOMTokenListToggle(token, !!force);
+    }
+}

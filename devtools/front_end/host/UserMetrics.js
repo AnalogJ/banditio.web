@@ -33,17 +33,14 @@
  */
 WebInspector.UserMetrics = function()
 {
-    for (var actionName in WebInspector.UserMetrics._ActionCodes) {
-        var actionCode = WebInspector.UserMetrics._ActionCodes[actionName];
-        this[actionName] = new WebInspector.UserMetrics._Recorder(actionCode);
-    }
 }
 
 // Codes below are used to collect UMA histograms in the Chromium port.
 // Do not change the values below, additional actions are needed on the Chromium side
 // in order to add more codes.
 
-WebInspector.UserMetrics._ActionCodes = {
+/** @enum {number} */
+WebInspector.UserMetrics.Action = {
     WindowDocked: 1,
     WindowUndocked: 2,
     ScriptsBreakpointSet: 3,
@@ -58,7 +55,9 @@ WebInspector.UserMetrics._ActionCodes = {
     RevisionApplied: 12,
     FileSystemDirectoryContentReceived: 13,
     StyleRuleEdited: 14,
-    CommandEvaluatedInConsolePanel: 15
+    CommandEvaluatedInConsolePanel: 15,
+    DOMPropertiesExpanded: 16,
+    ResizedViewInResponsiveMode: 17
 }
 
 WebInspector.UserMetrics._PanelCodes = {
@@ -70,7 +69,14 @@ WebInspector.UserMetrics._PanelCodes = {
     profiles: 6,
     audits: 7,
     console: 8,
-    layers: 9
+    layers: 9,
+    "drawer-console": 10,
+    "drawer-animations": 11,
+    "drawer-network.config": 12,
+    "drawer-rendering": 13,
+    "drawer-sensors": 14,
+    "drawer-sources.search": 15,
+    security: 16
 }
 
 WebInspector.UserMetrics.prototype = {
@@ -82,23 +88,25 @@ WebInspector.UserMetrics.prototype = {
         var code = WebInspector.UserMetrics._PanelCodes[panelName] || 0;
         var size = Object.keys(WebInspector.UserMetrics._PanelCodes).length + 1;
         InspectorFrontendHost.recordEnumeratedHistogram("DevTools.PanelShown", code, size);
-    }
-}
+    },
 
-/**
- * @constructor
- */
-WebInspector.UserMetrics._Recorder = function(actionCode)
-{
-    this._actionCode = actionCode;
-}
-
-WebInspector.UserMetrics._Recorder.prototype = {
-    record: function()
+    /**
+     * @param {string} drawerId
+     */
+    drawerShown: function(drawerId)
     {
-        var size = Object.keys(WebInspector.UserMetrics._ActionCodes).length + 1;
-        InspectorFrontendHost.recordEnumeratedHistogram("DevTools.ActionTaken", this._actionCode, size);
+        this.panelShown("drawer-" + drawerId);
+    },
+
+    /**
+     * @param {!WebInspector.UserMetrics.Action} action
+     */
+    actionTaken: function(action)
+    {
+        var size = Object.keys(WebInspector.UserMetrics.Action).length + 1;
+        InspectorFrontendHost.recordEnumeratedHistogram("DevTools.ActionTaken", action, size);
     }
 }
 
+/** @type {!WebInspector.UserMetrics} */
 WebInspector.userMetrics = new WebInspector.UserMetrics();

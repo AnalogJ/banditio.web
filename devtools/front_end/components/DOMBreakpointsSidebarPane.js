@@ -191,7 +191,7 @@ WebInspector.DOMBreakpointsSidebarPane.prototype = {
         } else
             message = "Paused on a \"%s\" breakpoint set on %s.";
 
-        var element = WebInspector.formatLocalized(message, substitutions, "");
+        var element = WebInspector.formatLocalized(message, substitutions);
 
         callback(element);
     },
@@ -348,7 +348,7 @@ WebInspector.DOMBreakpointsSidebarPane.prototype = {
         var element = this._breakpointElements[breakpointId];
         if (!element)
             return;
-        this.expand();
+        this.expandPane();
         element.classList.add("breakpoint-hit");
         this._highlightedElement = element;
     },
@@ -438,7 +438,7 @@ WebInspector.DOMBreakpointsSidebarPane.prototype = {
 
     onContentReady: function()
     {
-        for (var i = 0; i != this._proxies.length; i++)
+        for (var i = 0; i < this._proxies.length; i++)
             this._proxies[i].onContentReady();
     },
 
@@ -453,7 +453,7 @@ WebInspector.DOMBreakpointsSidebarPane.prototype = {
  */
 WebInspector.DOMBreakpointsSidebarPane.Proxy = function(pane, panel)
 {
-    WebInspector.SidebarPane.call(this, pane.title());
+    WebInspector.SidebarPane.call(this, WebInspector.UIString("DOM Breakpoints"));
     this.registerRequiredCSS("components/breakpointsList.css");
 
     this._wrappedPane = pane;
@@ -461,9 +461,9 @@ WebInspector.DOMBreakpointsSidebarPane.Proxy = function(pane, panel)
 }
 
 WebInspector.DOMBreakpointsSidebarPane.Proxy.prototype = {
-    expand: function()
+    expandPane: function()
     {
-        this._wrappedPane.expand();
+        this._wrappedPane.expandPane();
     },
 
     onContentReady: function()
@@ -487,26 +487,6 @@ WebInspector.DOMBreakpointsSidebarPane.Proxy.prototype = {
     },
 
     __proto__: WebInspector.SidebarPane.prototype
-}
-
-/**
- * @constructor
- * @implements {WebInspector.DOMPresentationUtils.MarkerDecorator}
- */
-WebInspector.DOMBreakpointsSidebarPane.MarkerDecorator = function()
-{
-}
-
-WebInspector.DOMBreakpointsSidebarPane.MarkerDecorator.prototype = {
-    /**
-     * @override
-     * @param {!WebInspector.DOMNode} node
-     * @return {?{title: string, color: string}}
-     */
-    decorate: function(node)
-    {
-        return { title: WebInspector.UIString("DOM Breakpoint"), color: "rgb(105, 140, 254)" };
-    }
 }
 
 /**

@@ -38,8 +38,6 @@ WebInspector.RequestResponseView = function(request)
     WebInspector.RequestContentView.call(this, request);
 }
 
-WebInspector.RequestResponseView._maxFormattedResourceSize = 100000;
-
 WebInspector.RequestResponseView.prototype = {
     get sourceView()
     {
@@ -47,14 +45,8 @@ WebInspector.RequestResponseView.prototype = {
             return this._sourceView;
 
         var contentProvider = new WebInspector.RequestResponseView.ContentProvider(this.request);
-        if (this.request.resourceSize >= WebInspector.RequestResponseView._maxFormattedResourceSize) {
-            this._sourceView = new WebInspector.ResourceSourceFrameFallback(contentProvider);
-            return this._sourceView;
-        }
-
-        var sourceFrame = new WebInspector.ResourceSourceFrame(contentProvider);
-        sourceFrame.setHighlighterType(this.request.resourceType().canonicalMimeType() || this.request.mimeType);
-        this._sourceView = sourceFrame;
+        var highlighterType = this.request.resourceType().canonicalMimeType() || this.request.mimeType;
+        this._sourceView = WebInspector.ResourceSourceFrame.createSearchableView(contentProvider, highlighterType);
         return this._sourceView;
     },
 
@@ -126,9 +118,9 @@ WebInspector.RequestResponseView.ContentProvider.prototype = {
 
     /**
      * @override
-     * @param {function(?string)} callback
+     * @return {!Promise<?string>}
      */
-    requestContent: function(callback)
+    requestContent: function()
     {
         /**
          * @param {?string} content
@@ -136,10 +128,11 @@ WebInspector.RequestResponseView.ContentProvider.prototype = {
          */
         function decodeContent(content)
         {
-            callback(this._request.contentEncoded ? window.atob(content || "") : content);
+            return this._request.contentEncoded ? window.atob(content || "") : content;
         }
 
-        this._request.requestContent(decodeContent.bind(this));
+        return this._request.requestContent()
+            .then(decodeContent.bind(this));
     },
 
     /**

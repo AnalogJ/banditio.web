@@ -47,7 +47,8 @@ WebInspector.DockController = function(canDock)
     }
 
     this._states = [WebInspector.DockController.State.DockedToRight, WebInspector.DockController.State.DockedToBottom, WebInspector.DockController.State.Undocked];
-    this._currentDockStateSetting = WebInspector.settings.createSetting("currentDockState", "right");
+    this._currentDockStateSetting = WebInspector.settings.moduleSetting("currentDockState");
+    this._currentDockStateSetting.addChangeListener(this._dockSideChanged, this);
     this._lastDockStateSetting = WebInspector.settings.createSetting("lastDockState", "bottom");
     if (this._states.indexOf(this._currentDockStateSetting.get()) === -1)
         this._currentDockStateSetting.set("right");
@@ -77,6 +78,11 @@ WebInspector.DockController.prototype = {
             return;
 
         this._titles = [WebInspector.UIString("Dock to right"), WebInspector.UIString("Dock to bottom"), WebInspector.UIString("Undock into separate window")];
+        this._dockSideChanged();
+    },
+
+    _dockSideChanged: function()
+    {
         this.setDockSide(this._currentDockStateSetting.get());
     },
 
@@ -115,13 +121,16 @@ WebInspector.DockController.prototype = {
         if (this._dockSide === dockSide)
             return;
 
-        this._lastDockStateSetting.set(this._dockSide);
-        this._currentDockStateSetting.set(dockSide);
+        if (this._dockSide)
+            this._lastDockStateSetting.set(this._dockSide);
+
+        WebInspector.DockController._previousFocusedElement = WebInspector.currentFocusElement();
         var eventData = { from: this._dockSide, to: dockSide };
         this.dispatchEventToListeners(WebInspector.DockController.Events.BeforeDockSideChanged, eventData);
         console.timeStamp("DockController.setIsDocked");
-        InspectorFrontendHost.setIsDocked(dockSide !== WebInspector.DockController.State.Undocked, this._setIsDockedResponse.bind(this, eventData));
         this._dockSide = dockSide;
+        this._currentDockStateSetting.set(dockSide);
+        InspectorFrontendHost.setIsDocked(dockSide !== WebInspector.DockController.State.Undocked, this._setIsDockedResponse.bind(this, eventData));
         this._updateUI();
         this.dispatchEventToListeners(WebInspector.DockController.Events.DockSideChanged, eventData);
     },
@@ -132,6 +141,10 @@ WebInspector.DockController.prototype = {
     _setIsDockedResponse: function(eventData)
     {
         this.dispatchEventToListeners(WebInspector.DockController.Events.AfterDockSideChanged, eventData);
+
+        if (WebInspector.DockController._previousFocusedElement)
+            WebInspector.DockController._previousFocusedElement.focus();
+        delete WebInspector.DockController._previousFocusedElement;
     },
 
     /**
@@ -185,10 +198,12 @@ WebInspector.DockController.ToggleDockActionDelegate.prototype = {
      * @override
      * @param {!WebInspector.Context} context
      * @param {string} actionId
+     * @return {boolean}
      */
     handleAction: function(context, actionId)
     {
         WebInspector.dockController._toggleDockSide();
+        return true;
     }
 }
 

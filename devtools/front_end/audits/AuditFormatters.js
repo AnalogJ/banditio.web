@@ -87,7 +87,7 @@ WebInspector.AuditFormatters.Registry = {
     resourceLink: function(url, line)
     {
         // FIXME: use WebInspector.Linkifier
-        return WebInspector.linkifyResourceAsNode(url, line, "resource-url webkit-html-resource-link");
+        return WebInspector.linkifyResourceAsNode(url, line, undefined, "resource-url webkit-html-resource-link");
     }
 };
 
@@ -107,8 +107,8 @@ WebInspector.AuditFormatters.prototype = {
         case "boolean":
         case "number":
             formatter = WebInspector.AuditFormatters.Registry.text;
-        args = [value.toString()];
-        break;
+            args = [value.toString()];
+            break;
 
         case "object":
             if (value instanceof Node)

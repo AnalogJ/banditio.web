@@ -76,6 +76,54 @@ WebInspector.ResourceType.prototype = {
     },
 
     /**
+     * @return {boolean}
+     */
+    isScript: function()
+    {
+        return this._name === "script" || this._name === "sm-script";
+    },
+
+    /**
+     * @return {boolean}
+     */
+    hasScripts: function()
+    {
+        return this.isScript() || this.isDocument();
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isStyleSheet: function()
+    {
+        return this._name === "stylesheet" || this._name === "sm-stylesheet";
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isDocument: function()
+    {
+        return this._name === "document";
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isDocumentOrScriptOrStyleSheet: function()
+    {
+        return this.isDocument() || this.isScript() || this.isStyleSheet();
+    },
+
+    /**
+     * @return {boolean}
+     */
+    isFromSourceMap: function()
+    {
+        return this._name.startsWith("sm-");
+    },
+
+    /**
      * @override
      * @return {string}
      */
@@ -89,11 +137,11 @@ WebInspector.ResourceType.prototype = {
      */
     canonicalMimeType: function()
     {
-        if (this === WebInspector.resourceTypes.Document)
+        if (this.isDocument())
             return "text/html";
-        if (this === WebInspector.resourceTypes.Script)
+        if (this.isScript())
             return "text/javascript";
-        if (this === WebInspector.resourceTypes.Stylesheet)
+        if (this.isStyleSheet())
             return "text/css";
         return "";
     }
@@ -119,6 +167,7 @@ WebInspector.resourceCategories = {
     Font: new WebInspector.ResourceCategory("Fonts", "Font"),
     Document: new WebInspector.ResourceCategory("Documents", "Doc"),
     WebSocket: new WebInspector.ResourceCategory("WebSockets", "WS"),
+    Manifest: new WebInspector.ResourceCategory("Manifest", "Manifest"),
     Other: new WebInspector.ResourceCategory("Other", "Other")
 }
 
@@ -138,75 +187,122 @@ WebInspector.resourceTypes = {
     Document: new WebInspector.ResourceType("document", "Document", WebInspector.resourceCategories.Document, true),
     TextTrack: new WebInspector.ResourceType("texttrack", "TextTrack", WebInspector.resourceCategories.Other, true),
     WebSocket: new WebInspector.ResourceType("websocket", "WebSocket", WebInspector.resourceCategories.WebSocket, false),
-    Other: new WebInspector.ResourceType("other", "Other", WebInspector.resourceCategories.Other, false)
+    Other: new WebInspector.ResourceType("other", "Other", WebInspector.resourceCategories.Other, false),
+    SourceMapScript: new WebInspector.ResourceType("sm-script", "Script", WebInspector.resourceCategories.Script, false),
+    SourceMapStyleSheet: new WebInspector.ResourceType("sm-stylesheet", "Stylesheet", WebInspector.resourceCategories.Stylesheet, false),
+    Manifest: new WebInspector.ResourceType("manifest", "Manifest", WebInspector.resourceCategories.Manifest, true),
 }
 
-WebInspector.ResourceType.mimeTypesForExtensions = {
-    // Web extensions
-    "js": "text/javascript",
-    "css": "text/css",
-    "html": "text/html",
-    "htm": "text/html",
-    "xml": "application/xml",
-    "xsl": "application/xml",
+/**
+ * @param {string} url
+ * @return {string|undefined}
+ */
+WebInspector.ResourceType.mimeFromURL = function(url)
+{
+    var name = WebInspector.ParsedURL.extractName(url);
+    if (WebInspector.ResourceType._mimeTypeByName.has(name)) {
+        return WebInspector.ResourceType._mimeTypeByName.get(name);
+    }
+    var ext = WebInspector.ParsedURL.extractExtension(url).toLowerCase();
+    return WebInspector.ResourceType._mimeTypeByExtension.get(ext);
+}
 
-    // HTML Embedded Scripts: ASP, JSP
-    "asp": "application/x-aspx",
-    "aspx": "application/x-aspx",
-    "jsp": "application/x-jsp",
+WebInspector.ResourceType._mimeTypeByName = new Map([
+    // CoffeeScript
+    ["Cakefile", "text/x-coffeescript"]
+]);
+
+WebInspector.ResourceType._mimeTypeByExtension = new Map([
+    // Web extensions
+    ["js", "text/javascript"],
+    ["css", "text/css"],
+    ["html", "text/html"],
+    ["htm", "text/html"],
+    ["xml", "application/xml"],
+    ["xsl", "application/xml"],
+
+    // HTML Embedded Scripts, ASP], JSP
+    ["asp", "application/x-aspx"],
+    ["aspx", "application/x-aspx"],
+    ["jsp", "application/x-jsp"],
 
     // C/C++
-    "c": "text/x-c++src",
-    "cc": "text/x-c++src",
-    "cpp": "text/x-c++src",
-    "h": "text/x-c++src",
-    "m": "text/x-c++src",
-    "mm": "text/x-c++src",
+    ["c", "text/x-c++src"],
+    ["cc", "text/x-c++src"],
+    ["cpp", "text/x-c++src"],
+    ["h", "text/x-c++src"],
+    ["m", "text/x-c++src"],
+    ["mm", "text/x-c++src"],
 
     // CoffeeScript
-    "coffee": "text/x-coffeescript",
+    ["coffee", "text/x-coffeescript"],
 
     // Dart
-    "dart": "text/javascript",
+    ["dart", "text/javascript"],
 
     // TypeScript
-    "ts": "text/typescript",
+    ["ts", "text/typescript"],
+    ["tsx", "text/typescript"],
 
     // JSON
-    "json": "application/json",
-    "gyp": "application/json",
-    "gypi": "application/json",
+    ["json", "application/json"],
+    ["gyp", "application/json"],
+    ["gypi", "application/json"],
 
     // C#
-    "cs": "text/x-csharp",
+    ["cs", "text/x-csharp"],
 
     // Java
-    "java": "text/x-java",
+    ["java", "text/x-java"],
 
     // Less
-    "less": "text/x-less",
+    ["less", "text/x-less"],
 
     // PHP
-    "php": "text/x-php",
-    "phtml": "application/x-httpd-php",
+    ["php", "text/x-php"],
+    ["phtml", "application/x-httpd-php"],
 
     // Python
-    "py": "text/x-python",
+    ["py", "text/x-python"],
 
     // Shell
-    "sh": "text/x-sh",
+    ["sh", "text/x-sh"],
 
     // SCSS
-    "scss": "text/x-scss",
+    ["scss", "text/x-scss"],
 
     // Video Text Tracks.
-    "vtt": "text/vtt",
+    ["vtt", "text/vtt"],
 
     // LiveScript
-    "ls": "text/x-livescript",
+    ["ls", "text/x-livescript"],
 
     // ClojureScript
-    "cljs": "text/x-clojure",
-    "cljc": "text/x-clojure",
-    "cljx": "text/x-clojure"
-}
+    ["cljs", "text/x-clojure"],
+    ["cljc", "text/x-clojure"],
+    ["cljx", "text/x-clojure"],
+
+    // Stylus
+    ["styl", "text/x-styl"],
+
+    // JSX
+    ["jsx", "text/jsx"],
+
+    // Image
+    ["jpeg", "image/jpeg"],
+    ["jpg", "image/jpeg"],
+    ["svg", "image/svg"],
+    ["gif", "image/gif"],
+    ["webp", "image/webp"],
+    ["png", "image/png"],
+    ["ico", "image/ico"],
+    ["tiff", "image/tiff"],
+    ["tif", "image/tif"],
+    ["bmp", "image/bmp"],
+
+    // Font
+    ["ttf", "font/opentype"],
+    ["otf", "font/opentype"],
+    ["ttc", "font/opentype"],
+    ["woff", "application/font-woff"]
+]);

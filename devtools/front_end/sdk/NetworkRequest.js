@@ -44,6 +44,8 @@ WebInspector.NetworkRequest = function(target, requestId, url, documentURL, fram
 {
     WebInspector.SDKObject.call(this, target);
 
+    this._networkLog = /** @type {!WebInspector.NetworkLog} */ (WebInspector.NetworkLog.fromTarget(target));
+    this._networkManager = /** @type {!WebInspector.NetworkManager} */ (WebInspector.NetworkManager.fromTarget(target));
     this._requestId = requestId;
     this.url = url;
     this._documentURL = documentURL;
@@ -54,12 +56,21 @@ WebInspector.NetworkRequest = function(target, requestId, url, documentURL, fram
     this._issueTime = -1;
     this._startTime = -1;
     this._endTime = -1;
+    /** @type {!NetworkAgent.BlockedReason|undefined} */
+    this._blockedReason = undefined;
 
     this.statusCode = 0;
     this.statusText = "";
     this.requestMethod = "";
     this.requestTime = 0;
     this.protocol = "";
+    /** @type {!NetworkAgent.RequestMixedContentType} */
+    this.mixedContentType = NetworkAgent.RequestMixedContentType.None;
+
+    /** @type {?NetworkAgent.ResourcePriority} */
+    this._initialPriority = null;
+    /** @type {?NetworkAgent.ResourcePriority} */
+    this._currentPriority = null;
 
     /** @type {!WebInspector.ResourceType} */
     this._resourceType = WebInspector.resourceTypes.Other;
@@ -73,6 +84,11 @@ WebInspector.NetworkRequest = function(target, requestId, url, documentURL, fram
     this._responseHeaderValues = {};
 
     this._remoteAddress = "";
+
+    /** @type {!SecurityAgent.SecurityState} */
+    this._securityState = SecurityAgent.SecurityState.Unknown;
+    /** @type {?NetworkAgent.SecurityDetails} */
+    this._securityDetails = null;
 
     /** @type {string} */
     this.connectionId = "0";
@@ -195,8 +211,6 @@ WebInspector.NetworkRequest.prototype = {
      */
     setRemoteAddress: function(ip, port)
     {
-        if (ip.indexOf(":") !== -1)
-            ip = "[" + ip + "]";
         this._remoteAddress = ip + ":" + port;
         this.dispatchEventToListeners(WebInspector.NetworkRequest.Events.RemoteAddressChanged, this);
     },
@@ -207,6 +221,38 @@ WebInspector.NetworkRequest.prototype = {
     remoteAddress: function()
     {
         return this._remoteAddress;
+    },
+
+    /**
+     * @return {!SecurityAgent.SecurityState}
+     */
+    securityState: function()
+    {
+        return this._securityState;
+    },
+
+    /**
+     * @param {!SecurityAgent.SecurityState} securityState
+     */
+    setSecurityState: function(securityState)
+    {
+        this._securityState = securityState;
+    },
+
+    /**
+     * @return {?NetworkAgent.SecurityDetails}
+     */
+    securityDetails: function()
+    {
+        return this._securityDetails;
+    },
+
+    /**
+     * @param {!NetworkAgent.SecurityDetails} securityDetails
+     */
+    setSecurityDetails: function(securityDetails)
+    {
+        this._securityDetails = securityDetails;
     },
 
     /**
@@ -386,16 +432,27 @@ WebInspector.NetworkRequest.prototype = {
     },
 
     /**
-     * @return {boolean}
+     * @return {!NetworkAgent.BlockedReason|undefined}
      */
-    get blocked()
+    blockedReason: function()
     {
-        return this._blocked;
+        return this._blockedReason;
     },
 
-    set blocked(x)
+    /**
+     * @param {!NetworkAgent.BlockedReason} reason
+     */
+    setBlockedReason: function(reason)
     {
-        this._blocked = x;
+        this._blockedReason = reason;
+    },
+
+    /**
+     * @return {boolean}
+     */
+    wasBlocked: function()
+    {
+        return !!this._blockedReason;
     },
 
     /**
@@ -878,24 +935,23 @@ WebInspector.NetworkRequest.prototype = {
 
     /**
      * @override
-     * @param {function(?string)} callback
+     * @return {!Promise<?string>}
      */
-    requestContent: function(callback)
+    requestContent: function()
     {
         // We do not support content retrieval for WebSockets at the moment.
         // Since WebSockets are potentially long-living, fail requests immediately
         // to prevent caller blocking until resource is marked as finished.
-        if (this._resourceType === WebInspector.resourceTypes.WebSocket) {
-            callback(null);
-            return;
-        }
-        if (typeof this._content !== "undefined") {
-            callback(this.content || null);
-            return;
-        }
+        if (this._resourceType === WebInspector.resourceTypes.WebSocket)
+            return Promise.resolve(/** @type {?string} */(null));
+        if (typeof this._content !== "undefined")
+            return Promise.resolve(/** @type {?string} */(this.content || null));
+        var callback;
+        var promise = new Promise(fulfill => callback = fulfill);
         this._pendingContentCallbacks.push(callback);
         if (this.finished)
             this._innerRequestContent();
+        return promise;
     },
 
     /**
@@ -932,6 +988,38 @@ WebInspector.NetworkRequest.prototype = {
     hasErrorStatusCode: function()
     {
         return this.statusCode >= 400;
+    },
+
+    /**
+     * @param {!NetworkAgent.ResourcePriority} priority
+     */
+    setInitialPriority: function(priority)
+    {
+        this._initialPriority = priority;
+    },
+
+    /**
+     * @return {?NetworkAgent.ResourcePriority}
+     */
+    initialPriority: function()
+    {
+        return this._initialPriority;
+    },
+
+    /**
+     * @param {!NetworkAgent.ResourcePriority} priority
+     */
+    setPriority: function(priority)
+    {
+        this._currentPriority = priority;
+    },
+
+    /**
+     * @return {?NetworkAgent.ResourcePriority}
+     */
+    priority: function()
+    {
+        return this._currentPriority || this._initialPriority || null;
     },
 
     /**
@@ -991,7 +1079,7 @@ WebInspector.NetworkRequest.prototype = {
     },
 
     /**
-     * @return {!{type: !WebInspector.NetworkRequest.InitiatorType, url: string, lineNumber: number, columnNumber: number}}
+     * @return {!{type: !WebInspector.NetworkRequest.InitiatorType, url: string, lineNumber: number, columnNumber: number, scriptId: ?string}}
      */
     initiatorInfo: function()
     {
@@ -1002,6 +1090,7 @@ WebInspector.NetworkRequest.prototype = {
         var url = "";
         var lineNumber = -Infinity;
         var columnNumber = -Infinity;
+        var scriptId = null;
         var initiator = this._initiator;
 
         if (this.redirectSource) {
@@ -1013,17 +1102,21 @@ WebInspector.NetworkRequest.prototype = {
                 url = initiator.url ? initiator.url : url;
                 lineNumber = initiator.lineNumber ? initiator.lineNumber : lineNumber;
             } else if (initiator.type === NetworkAgent.InitiatorType.Script) {
-                var topFrame = initiator.stackTrace[0];
-                if (topFrame.url) {
+                for (var stack = initiator.stack; stack; stack = stack.parent) {
+                    var topFrame = stack.callFrames.length ? stack.callFrames[0] : null;
+                    if (!topFrame)
+                        continue;
                     type = WebInspector.NetworkRequest.InitiatorType.Script;
-                    url = topFrame.url;
+                    url = topFrame.url || WebInspector.UIString("<anonymous>");
                     lineNumber = topFrame.lineNumber;
                     columnNumber = topFrame.columnNumber;
+                    scriptId = topFrame.scriptId;
+                    break;
                 }
             }
         }
 
-        this._initiatorInfo = {type: type, url: url, lineNumber: lineNumber, columnNumber: columnNumber};
+        this._initiatorInfo = {type: type, url: url, lineNumber: lineNumber, columnNumber: columnNumber, scriptId: scriptId};
         return this._initiatorInfo;
     },
 
@@ -1033,7 +1126,7 @@ WebInspector.NetworkRequest.prototype = {
     initiatorRequest: function()
     {
         if (this._initiatorRequest === undefined)
-            this._initiatorRequest = this.target().networkLog.requestForURL(this.initiatorInfo().url);
+            this._initiatorRequest = this._networkLog.requestForURL(this.initiatorInfo().url);
         return this._initiatorRequest;
     },
 
@@ -1114,6 +1207,22 @@ WebInspector.NetworkRequest.prototype = {
     replayXHR: function()
     {
         this.target().networkAgent().replayXHR(this.requestId);
+    },
+
+    /**
+     * @return {!WebInspector.NetworkLog}
+     */
+    networkLog: function()
+    {
+        return this._networkLog;
+    },
+
+    /**
+     * @return {!WebInspector.NetworkManager}
+     */
+    networkManager: function()
+    {
+        return this._networkManager;
     },
 
     __proto__: WebInspector.SDKObject.prototype

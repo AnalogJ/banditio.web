@@ -27,24 +27,35 @@
  */
 
 /**
- * @extends {WebInspector.VBox}
+ * @extends {WebInspector.VBoxWithToolbarItems}
  * @constructor
- * @param {string} url
  * @param {string} mimeType
  * @param {!WebInspector.ContentProvider} contentProvider
  */
-WebInspector.ImageView = function(url, mimeType, contentProvider)
+WebInspector.ImageView = function(mimeType, contentProvider)
 {
-    WebInspector.VBox.call(this);
+    WebInspector.VBoxWithToolbarItems.call(this);
     this.registerRequiredCSS("source_frame/imageView.css");
     this.element.classList.add("image-view");
-    this._url = url;
-    this._parsedURL = new WebInspector.ParsedURL(url);
+    this._url = contentProvider.contentURL();
+    this._parsedURL = new WebInspector.ParsedURL(this._url);
     this._mimeType = mimeType;
     this._contentProvider = contentProvider;
+    this._sizeLabel = new WebInspector.ToolbarText();
+    this._dimensionsLabel = new WebInspector.ToolbarText();
+    this._mimeTypeLabel = new WebInspector.ToolbarText(mimeType);
 }
 
 WebInspector.ImageView.prototype = {
+    /**
+     * @override
+     * @return {!Array<!WebInspector.ToolbarItem>}
+     */
+    toolbarItems: function()
+    {
+        return [this._sizeLabel, new WebInspector.ToolbarSeparator(), this._dimensionsLabel, new WebInspector.ToolbarSeparator(), this._mimeTypeLabel];
+    },
+
     wasShown: function()
     {
         this._createContentIfNeeded();
@@ -55,17 +66,12 @@ WebInspector.ImageView.prototype = {
         if (this._container)
             return;
 
-        var imageContainer = this.element.createChild("div", "image");
-        var imagePreviewElement = imageContainer.createChild("img", "resource-image-view");
+        this._container = this.element.createChild("div", "image");
+        var imagePreviewElement = this._container.createChild("img", "resource-image-view");
         imagePreviewElement.addEventListener("contextmenu", this._contextMenu.bind(this), true);
-
-        this._container = this.element.createChild("div", "info");
-        this._container.createChild("h1", "title").textContent = this._parsedURL.displayName;
-
-        var infoListElement = createElementWithClass("dl", "infoList");
-
         WebInspector.Resource.populateImageSource(this._url, this._mimeType, this._contentProvider, imagePreviewElement);
-        this._contentProvider.requestContent(onContentAvailable.bind(this));
+
+        this._contentProvider.requestContent().then(onContentAvailable.bind(this));
 
         /**
          * @param {?string} content
@@ -73,22 +79,8 @@ WebInspector.ImageView.prototype = {
          */
         function onContentAvailable(content)
         {
-            var resourceSize = this._base64ToSize(content);
-
-            var imageProperties = [
-                { name: WebInspector.UIString("Dimensions"), value: WebInspector.UIString("%d × %d", imagePreviewElement.naturalWidth, imagePreviewElement.naturalHeight) },
-                { name: WebInspector.UIString("File size"), value: Number.bytesToString(resourceSize) },
-                { name: WebInspector.UIString("MIME type"), value: this._mimeType }
-            ];
-
-            infoListElement.removeChildren();
-            for (var i = 0; i < imageProperties.length; ++i) {
-                infoListElement.createChild("dt").textContent = imageProperties[i].name;
-                infoListElement.createChild("dd").textContent = imageProperties[i].value;
-            }
-            infoListElement.createChild("dt").textContent = WebInspector.UIString("URL");
-            infoListElement.createChild("dd").appendChild(WebInspector.linkifyURLAsNode(this._url, undefined, undefined, true));
-            this._container.appendChild(infoListElement);
+            this._sizeLabel.setText(Number.bytesToString(this._base64ToSize(content)));
+            this._dimensionsLabel.setText(WebInspector.UIString("%d × %d", imagePreviewElement.naturalWidth, imagePreviewElement.naturalHeight));
         }
         this._imagePreviewElement = imagePreviewElement;
     },
@@ -112,10 +104,12 @@ WebInspector.ImageView.prototype = {
     _contextMenu: function(event)
     {
         var contextMenu = new WebInspector.ContextMenu(event);
-        contextMenu.appendItem(WebInspector.UIString.capitalize("Copy ^image URL"), this._copyImageURL.bind(this));
+        if (!this._parsedURL.isDataURL())
+            contextMenu.appendItem(WebInspector.UIString.capitalize("Copy ^image URL"), this._copyImageURL.bind(this));
         if (this._imagePreviewElement.src)
-            contextMenu.appendItem(WebInspector.UIString.capitalize("Copy ^image as Data URL"), this._copyImageAsDataURL.bind(this));
+            contextMenu.appendItem(WebInspector.UIString.capitalize("Copy ^image as Data URI"), this._copyImageAsDataURL.bind(this));
         contextMenu.appendItem(WebInspector.UIString.capitalize("Open ^image in ^new ^tab"), this._openInNewTab.bind(this));
+        contextMenu.appendItem(WebInspector.UIString.capitalize("Save\u2026"), this._saveImage.bind(this));
         contextMenu.show();
     },
 
@@ -129,10 +123,18 @@ WebInspector.ImageView.prototype = {
         InspectorFrontendHost.copyText(this._url);
     },
 
+    _saveImage: function()
+    {
+        var link = createElement("a");
+        link.download = this._parsedURL.displayName;
+        link.href = this._url;
+        link.click();
+    },
+
     _openInNewTab: function()
     {
         InspectorFrontendHost.openInNewTab(this._url);
     },
 
-    __proto__: WebInspector.VBox.prototype
+    __proto__: WebInspector.VBoxWithToolbarItems.prototype
 }

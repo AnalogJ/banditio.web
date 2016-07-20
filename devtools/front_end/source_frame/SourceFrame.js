@@ -29,17 +29,19 @@
  */
 
 /**
- * @extends {WebInspector.VBox}
  * @constructor
+ * @extends {WebInspector.VBoxWithToolbarItems}
+ * @implements {WebInspector.Searchable}
  * @implements {WebInspector.Replaceable}
- * @param {!WebInspector.ContentProvider} contentProvider
+ * @param {string} url
+ * @param {function(): !Promise<?string>} lazyContent
  */
-WebInspector.SourceFrame = function(contentProvider)
+WebInspector.SourceFrame = function(url, lazyContent)
 {
-    WebInspector.VBox.call(this);
+    WebInspector.VBoxWithToolbarItems.call(this);
 
-    this._url = contentProvider.contentURL();
-    this._contentProvider = contentProvider;
+    this._url = url;
+    this._lazyContent = lazyContent;
 
     var textEditorDelegate = new WebInspector.TextEditorDelegateForSourceFrame(this);
 
@@ -48,17 +50,17 @@ WebInspector.SourceFrame = function(contentProvider)
     this._currentSearchResultIndex = -1;
     this._searchResults = [];
 
-    this._rowMessageBuckets = {};
-
     this._textEditor.setReadOnly(!this.canEditSource());
 
     this._shortcuts = {};
     this.element.addEventListener("keydown", this._handleKeyDown.bind(this), false);
 
-    this._sourcePosition = new WebInspector.ToolbarText("", "source-frame-cursor-position");
+    this._sourcePosition = new WebInspector.ToolbarText();
 
-    this._errorPopoverHelper = new WebInspector.PopoverHelper(this.element, this._getErrorAnchor.bind(this), this._showErrorPopover.bind(this));
-    this._errorPopoverHelper.setTimeout(100, 100);
+    /**
+     * @type {?WebInspector.SearchableView}
+     */
+    this._searchableView = null;
 }
 
 WebInspector.SourceFrame.Events = {
@@ -68,33 +70,6 @@ WebInspector.SourceFrame.Events = {
 }
 
 WebInspector.SourceFrame.prototype = {
-    /**
-     * @param {!Element} target
-     * @param {!Event} event
-     * @return {(!Element|undefined)}
-     */
-    _getErrorAnchor: function(target, event)
-    {
-        var element = target.enclosingNodeOrSelfWithClass("text-editor-line-decoration-icon")
-            || target.enclosingNodeOrSelfWithClass("text-editor-line-decoration-wave");
-        if (!element)
-            return;
-        this._errorWavePopoverAnchor = new AnchorBox(event.clientX, event.clientY, 1, 1);
-        return element;
-    },
-
-    /**
-     * @param {!Element} anchor
-     * @param {!WebInspector.Popover} popover
-     */
-    _showErrorPopover: function(anchor, popover)
-    {
-        var messageBucket = anchor.enclosingNodeOrSelfWithClass("text-editor-line-decoration")._messageBucket;
-        var messagesOutline = messageBucket.messagesDescription();
-        var popoverAnchor = anchor.enclosingNodeOrSelfWithClass("text-editor-line-decoration-icon") ? anchor : this._errorWavePopoverAnchor;
-        popover.showForAnchor(messagesOutline, popoverAnchor);
-    },
-
     /**
      * @param {number} key
      * @param {function():boolean} handler
@@ -109,23 +84,13 @@ WebInspector.SourceFrame.prototype = {
         this._ensureContentLoaded();
         this._textEditor.show(this.element);
         this._editorAttached = true;
-        // We need CodeMirrorTextEditor to be initialized prior to this call as it calls |cursorPositionToCoordinates| internally. @see crbug.com/506566
-        setImmediate(this._updateBucketDecorations.bind(this));
         this._wasShownOrLoaded();
-    },
-
-    _updateBucketDecorations: function()
-    {
-        for (var line in this._rowMessageBuckets) {
-            var bucket = this._rowMessageBuckets[line];
-            bucket._updateDecoration();
-        }
     },
 
     /**
      * @return {boolean}
      */
-    _isEditorShowing: function()
+    isEditorShowing: function()
     {
         return this.isShowing() && this._editorAttached;
     },
@@ -138,11 +103,12 @@ WebInspector.SourceFrame.prototype = {
     },
 
     /**
-     * @return {!WebInspector.ToolbarText}
+     * @override
+     * @return {!Array<!WebInspector.ToolbarItem>}
      */
-    toolbarText: function()
+    toolbarItems: function()
     {
-        return this._sourcePosition;
+        return [this._sourcePosition];
     },
 
     /**
@@ -168,19 +134,8 @@ WebInspector.SourceFrame.prototype = {
     {
         if (!this._contentRequested) {
             this._contentRequested = true;
-            this._contentProvider.requestContent(this.setContent.bind(this));
+            this._lazyContent().then(this.setContent.bind(this));
         }
-    },
-
-    clearMessages: function()
-    {
-        for (var line in this._rowMessageBuckets) {
-            var bubble = this._rowMessageBuckets[line];
-            bubble.detachFromEditor();
-        }
-
-        this._rowMessageBuckets = {};
-        this._errorPopoverHelper.hidePopover();
     },
 
     /**
@@ -201,7 +156,7 @@ WebInspector.SourceFrame.prototype = {
         if (!this._positionToReveal)
             return;
 
-        if (!this.loaded || !this._isEditorShowing())
+        if (!this.loaded || !this.isEditorShowing())
             return;
 
         this._textEditor.revealPosition(this._positionToReveal.line, this._positionToReveal.column, this._positionToReveal.shouldHighlight);
@@ -227,7 +182,7 @@ WebInspector.SourceFrame.prototype = {
     _innerScrollToLineIfNeeded: function()
     {
         if (typeof this._lineToScrollTo === "number") {
-            if (this.loaded && this._isEditorShowing()) {
+            if (this.loaded && this.isEditorShowing()) {
                 this._textEditor.scrollToLine(this._lineToScrollTo);
                 delete this._lineToScrollTo;
             }
@@ -258,7 +213,7 @@ WebInspector.SourceFrame.prototype = {
 
     _innerSetSelectionIfNeeded: function()
     {
-        if (this._selectionToSet && this.loaded && this._isEditorShowing()) {
+        if (this._selectionToSet && this.loaded && this.isEditorShowing()) {
             this._textEditor.setSelection(this._selectionToSet);
             delete this._selectionToSet;
         }
@@ -276,11 +231,14 @@ WebInspector.SourceFrame.prototype = {
         this._innerScrollToLineIfNeeded();
     },
 
+    /**
+     * @param {!WebInspector.TextRange} oldRange
+     * @param {!WebInspector.TextRange} newRange
+     */
     onTextChanged: function(oldRange, newRange)
     {
-        if (this._searchResultsChangedCallback)
-            this._searchResultsChangedCallback();
-        this.clearMessages();
+        if (this._searchConfig && this._searchableView)
+            this.performSearch(this._searchConfig, false, false);
     },
 
     /**
@@ -329,33 +287,39 @@ WebInspector.SourceFrame.prototype = {
             this._textEditor.setText(content || "");
             this._textEditor.markClean();
         } else {
-            var firstLine = this._textEditor.firstVisibleLine();
+            var scrollTop = this._textEditor.scrollTop();
             var selection = this._textEditor.selection();
             this._textEditor.setText(content || "");
-            this._textEditor.scrollToLine(firstLine);
+            this._textEditor.setScrollTop(scrollTop);
             this._textEditor.setSelection(selection);
         }
 
         this._updateHighlighterType(content || "");
-        this.clearMessages();
         this._wasShownOrLoaded();
 
         if (this._delayedFindSearchMatches) {
             this._delayedFindSearchMatches();
             delete this._delayedFindSearchMatches;
         }
-        this.onTextEditorContentLoaded();
+        this.onTextEditorContentSet();
     },
 
-    onTextEditorContentLoaded: function() {},
+    onTextEditorContentSet: function() {},
+
+    /**
+     * @param {?WebInspector.SearchableView} view
+     */
+    setSearchableView: function(view)
+    {
+        this._searchableView = view;
+    },
 
     /**
      * @param {!WebInspector.SearchableView.SearchConfig} searchConfig
      * @param {boolean} shouldJump
      * @param {boolean} jumpBackwards
-     * @param {function(!WebInspector.Widget, number)} searchFinishedCallback
      */
-    _doFindSearchMatches: function(searchConfig, shouldJump, jumpBackwards, searchFinishedCallback)
+    _doFindSearchMatches: function(searchConfig, shouldJump, jumpBackwards)
     {
         this._currentSearchResultIndex = -1;
         this._searchResults = [];
@@ -363,7 +327,10 @@ WebInspector.SourceFrame.prototype = {
         var regex = searchConfig.toSearchRegex();
         this._searchRegex = regex;
         this._searchResults = this._collectRegexMatches(regex);
-        searchFinishedCallback(this, this._searchResults.length);
+
+        if (this._searchableView)
+            this._searchableView.updateSearchMatchesCount(this._searchResults.length);
+
         if (!this._searchResults.length)
             this._textEditor.cancelSearchResultsHighlight();
         else if (shouldJump && jumpBackwards)
@@ -375,23 +342,22 @@ WebInspector.SourceFrame.prototype = {
     },
 
     /**
+     * @override
      * @param {!WebInspector.SearchableView.SearchConfig} searchConfig
      * @param {boolean} shouldJump
-     * @param {boolean} jumpBackwards
-     * @param {function(!WebInspector.Widget, number)} searchFinishedCallback
-     * @param {function(number)} currentMatchChangedCallback
-     * @param {function()} searchResultsChangedCallback
+     * @param {boolean=} jumpBackwards
      */
-    performSearch: function(searchConfig, shouldJump, jumpBackwards, searchFinishedCallback, currentMatchChangedCallback, searchResultsChangedCallback)
+    performSearch: function(searchConfig, shouldJump, jumpBackwards)
     {
+        if (this._searchableView)
+            this._searchableView.updateSearchMatchesCount(0);
+
         this._resetSearch();
-        this._currentSearchMatchChangedCallback = currentMatchChangedCallback;
-        this._searchResultsChangedCallback = searchResultsChangedCallback;
-        var searchFunction = this._doFindSearchMatches.bind(this, searchConfig, shouldJump, jumpBackwards, searchFinishedCallback);
+        this._searchConfig = searchConfig;
         if (this.loaded)
-            searchFunction.call(this);
+            this._doFindSearchMatches(searchConfig, shouldJump, !!jumpBackwards)
         else
-            this._delayedFindSearchMatches = searchFunction;
+            this._delayedFindSearchMatches = this._doFindSearchMatches.bind(this, searchConfig, shouldJump, !!jumpBackwards);
 
         this._ensureContentLoaded();
     },
@@ -406,21 +372,23 @@ WebInspector.SourceFrame.prototype = {
         if (!this._searchResults.length)
             return;
         this._currentSearchResultIndex = -1;
-        if (this._currentSearchMatchChangedCallback)
-            this._currentSearchMatchChangedCallback(this._currentSearchResultIndex);
+        if (this._searchableView)
+            this._searchableView.updateCurrentMatchIndex(this._currentSearchResultIndex);
         this._textEditor.highlightSearchResults(this._searchRegex, null);
     },
 
     _resetSearch: function()
     {
+        delete this._searchConfig;
         delete this._delayedFindSearchMatches;
-        delete this._currentSearchMatchChangedCallback;
-        delete this._searchResultsChangedCallback;
         this._currentSearchResultIndex = -1;
         this._searchResults = [];
         delete this._searchRegex;
     },
 
+    /**
+     * @override
+     */
     searchCanceled: function()
     {
         var range = this._currentSearchResultIndex !== -1 ? this._searchResults[this._currentSearchResultIndex] : null;
@@ -455,9 +423,12 @@ WebInspector.SourceFrame.prototype = {
      */
     _searchResultIndexForCurrentSelection: function()
     {
-        return insertionIndexForObjectInListSortedByFunction(this._textEditor.selection().collapseToEnd(), this._searchResults, WebInspector.TextRange.comparator);
+        return this._searchResults.lowerBound(this._textEditor.selection().collapseToEnd(), WebInspector.TextRange.comparator);
     },
 
+    /**
+     * @override
+     */
     jumpToNextSearchResult: function()
     {
         var currentIndex = this._searchResultIndexForCurrentSelection();
@@ -465,10 +436,31 @@ WebInspector.SourceFrame.prototype = {
         this.jumpToSearchResult(nextIndex);
     },
 
+    /**
+     * @override
+     */
     jumpToPreviousSearchResult: function()
     {
         var currentIndex = this._searchResultIndexForCurrentSelection();
         this.jumpToSearchResult(currentIndex - 1);
+    },
+
+    /**
+     * @override
+     * @return {boolean}
+     */
+    supportsCaseSensitiveSearch: function()
+    {
+        return true;
+    },
+
+    /**
+     * @override
+     * @return {boolean}
+     */
+    supportsRegexSearch: function()
+    {
+        return true;
     },
 
     get currentSearchResultIndex()
@@ -481,8 +473,8 @@ WebInspector.SourceFrame.prototype = {
         if (!this.loaded || !this._searchResults.length)
             return;
         this._currentSearchResultIndex = (index + this._searchResults.length) % this._searchResults.length;
-        if (this._currentSearchMatchChangedCallback)
-            this._currentSearchMatchChangedCallback(this._currentSearchResultIndex);
+        if (this._searchableView)
+            this._searchableView.updateCurrentMatchIndex(this._currentSearchResultIndex);
         this._textEditor.highlightSearchResults(this._searchRegex, this._searchResults[this._currentSearchResultIndex]);
     },
 
@@ -533,10 +525,10 @@ WebInspector.SourceFrame.prototype = {
             return;
 
         // Calculate the position of the end of the last range to be edited.
-        var currentRangeIndex = insertionIndexForObjectInListSortedByFunction(this._textEditor.selection(), ranges, WebInspector.TextRange.comparator);
+        var currentRangeIndex = ranges.lowerBound(this._textEditor.selection(), WebInspector.TextRange.comparator);
         var lastRangeIndex = mod(currentRangeIndex - 1, ranges.length);
         var lastRange = ranges[lastRangeIndex];
-        var replacementLineEndings = replacement.lineEndings();
+        var replacementLineEndings = replacement.computeLineEndings();
         var replacementLineCount = replacementLineEndings.length;
         var lastLineNumber = lastRange.startLine + replacementLineEndings.length - 1;
         var lastColumnNumber = lastRange.startColumn;
@@ -569,49 +561,19 @@ WebInspector.SourceFrame.prototype = {
     },
 
     /**
-     * @param {!WebInspector.SourceFrameMessage} message
+     * @return {!Promise}
      */
-    addMessageToSource: function(message)
+    populateLineGutterContextMenu: function(contextMenu, lineNumber)
     {
-        var lineNumber = message.lineNumber();
-        if (lineNumber >= this._textEditor.linesCount)
-            lineNumber = this._textEditor.linesCount - 1;
-        if (lineNumber < 0)
-            lineNumber = 0;
-
-        if (!this._rowMessageBuckets[lineNumber])
-            this._rowMessageBuckets[lineNumber] = new WebInspector.SourceFrame.RowMessageBucket(this, this._textEditor, lineNumber);
-        var messageBucket = this._rowMessageBuckets[lineNumber];
-        messageBucket.addMessage(message);
+        return Promise.resolve();
     },
 
     /**
-     * @param {!WebInspector.SourceFrameMessage} message
+     * @return {!Promise}
      */
-    removeMessageFromSource: function(message)
-    {
-        var lineNumber = message.lineNumber();
-        if (lineNumber >= this._textEditor.linesCount)
-            lineNumber = this._textEditor.linesCount - 1;
-        if (lineNumber < 0)
-            lineNumber = 0;
-
-        var messageBucket = this._rowMessageBuckets[lineNumber];
-        if (!messageBucket)
-            return;
-        messageBucket.removeMessage(message);
-        if (!messageBucket.uniqueMessagesCount()) {
-            messageBucket.detachFromEditor();
-            delete this._rowMessageBuckets[lineNumber];
-        }
-    },
-
-    populateLineGutterContextMenu: function(contextMenu, lineNumber)
-    {
-    },
-
     populateTextAreaContextMenu: function(contextMenu, lineNumber, columnNumber)
     {
+        return Promise.resolve();
     },
 
     /**
@@ -683,293 +645,7 @@ WebInspector.SourceFrame.prototype = {
             e.consume(true);
     },
 
-    __proto__: WebInspector.VBox.prototype
-}
-
-/**
- * @constructor
- * @param {string} messageText
- * @param {!WebInspector.SourceFrameMessage.Level} level
- * @param {number} lineNumber
- * @param {number=} columnNumber
- */
-WebInspector.SourceFrameMessage = function(messageText, level, lineNumber, columnNumber)
-{
-    this._messageText = messageText;
-    this._level = level;
-    this._lineNumber = lineNumber;
-    this._columnNumber = columnNumber;
-}
-
-/**
- * @enum {string}
- */
-WebInspector.SourceFrameMessage.Level = {
-    Error: "Error",
-    Warning: "Warning"
-}
-
-/**
- * @param {!WebInspector.ConsoleMessage} consoleMessage
- * @param {number} lineNumber
- * @param {number} columnNumber
- * @return {!WebInspector.SourceFrameMessage}
- */
-WebInspector.SourceFrameMessage.fromConsoleMessage = function(consoleMessage, lineNumber, columnNumber)
-{
-    console.assert(consoleMessage.level === WebInspector.ConsoleMessage.MessageLevel.Error || consoleMessage.level === WebInspector.ConsoleMessage.MessageLevel.Warning);
-    var level = consoleMessage.level === WebInspector.ConsoleMessage.MessageLevel.Error ? WebInspector.SourceFrameMessage.Level.Error : WebInspector.SourceFrameMessage.Level.Warning;
-    return new WebInspector.SourceFrameMessage(consoleMessage.messageText, level, lineNumber, columnNumber);
-}
-
-WebInspector.SourceFrameMessage.prototype = {
-    /**
-     * @return {string}
-     */
-    messageText: function()
-    {
-        return this._messageText;
-    },
-
-    /**
-     * @return {!WebInspector.SourceFrameMessage.Level}
-     */
-    level: function()
-    {
-        return this._level;
-    },
-
-    /**
-     * @return {number}
-     */
-    lineNumber: function()
-    {
-        return this._lineNumber;
-    },
-
-    /**
-     * @return {(number|undefined)}
-     */
-    columnNumber: function()
-    {
-        return this._columnNumber;
-    },
-
-    /**
-     * @param {!WebInspector.SourceFrameMessage} another
-     * @return {boolean}
-     */
-    isEqual: function(another)
-    {
-        return this.messageText() === another.messageText() && this.level() === another.level() && this.lineNumber() === another.lineNumber() && this.columnNumber() === another.columnNumber();
-    }
-}
-
-WebInspector.SourceFrame._iconClassPerLevel = {};
-WebInspector.SourceFrame._iconClassPerLevel[WebInspector.SourceFrameMessage.Level.Error] = "error-icon";
-WebInspector.SourceFrame._iconClassPerLevel[WebInspector.SourceFrameMessage.Level.Warning] = "warning-icon";
-
-WebInspector.SourceFrame._lineClassPerLevel = {};
-WebInspector.SourceFrame._lineClassPerLevel[WebInspector.SourceFrameMessage.Level.Error] = "text-editor-line-with-error";
-WebInspector.SourceFrame._lineClassPerLevel[WebInspector.SourceFrameMessage.Level.Warning] = "text-editor-line-with-warning";
-
-/**
- * @constructor
- * @param {!WebInspector.SourceFrameMessage} message
- */
-WebInspector.SourceFrame.RowMessage = function(message)
-{
-    this._message = message;
-    this._repeatCount = 1;
-    this.element = createElementWithClass("div", "text-editor-row-message");
-    this._icon = this.element.createChild("label", "", "dt-icon-label");
-    this._icon.type = WebInspector.SourceFrame._iconClassPerLevel[message.level()];
-    this._repeatCountElement = this.element.createChild("span", "bubble-repeat-count hidden error");
-    var linesContainer = this.element.createChild("div", "text-editor-row-message-lines");
-    var lines = this._message.messageText().split("\n");
-    for (var i = 0; i < lines.length; ++i) {
-        var messageLine = linesContainer.createChild("div");
-        messageLine.textContent = lines[i];
-    }
-}
-
-WebInspector.SourceFrame.RowMessage.prototype = {
-    /**
-     * @return {!WebInspector.SourceFrameMessage}
-     */
-    message: function()
-    {
-        return this._message;
-    },
-
-    /**
-     * @return {number}
-     */
-    repeatCount: function()
-    {
-        return this._repeatCount;
-    },
-
-    setRepeatCount: function(repeatCount)
-    {
-        if (this._repeatCount === repeatCount)
-            return;
-        this._repeatCount = repeatCount;
-        this._updateMessageRepeatCount();
-    },
-
-    _updateMessageRepeatCount: function()
-    {
-        this._repeatCountElement.textContent = this._repeatCount;
-        var showRepeatCount = this._repeatCount > 1;
-        this._repeatCountElement.classList.toggle("hidden", !showRepeatCount);
-        this._icon.classList.toggle("hidden", showRepeatCount);
-    }
-}
-
-/**
- * @constructor
- * @param {!WebInspector.SourceFrame} sourceFrame
- * @param {!WebInspector.CodeMirrorTextEditor} textEditor
- * @param {number} lineNumber
- */
-WebInspector.SourceFrame.RowMessageBucket = function(sourceFrame, textEditor, lineNumber)
-{
-    this._sourceFrame = sourceFrame;
-    this._textEditor = textEditor;
-    this._lineHandle = textEditor.textEditorPositionHandle(lineNumber, 0);
-    this._decoration = createElementWithClass("div", "text-editor-line-decoration");
-    this._decoration._messageBucket = this;
-    this._wave = this._decoration.createChild("div", "text-editor-line-decoration-wave");
-    this._icon = this._wave.createChild("label", "text-editor-line-decoration-icon", "dt-icon-label");
-
-    this._textEditor.addDecoration(lineNumber, this._decoration);
-
-    this._messagesDescriptionElement = createElementWithClass("div", "text-editor-messages-description-container");
-    /** @type {!Array.<!WebInspector.SourceFrame.RowMessage>} */
-    this._messages = [];
-
-    this._level = null;
-}
-
-WebInspector.SourceFrame.RowMessageBucket.prototype = {
-    /**
-     * @param {number} lineNumber
-     * @param {number} columnNumber
-     */
-    _updateWavePosition: function(lineNumber, columnNumber)
-    {
-        lineNumber = Math.min(lineNumber, this._textEditor.linesCount - 1);
-        var lineText = this._textEditor.line(lineNumber);
-        columnNumber = Math.min(columnNumber, lineText.length);
-        var lineIndent = WebInspector.TextUtils.lineIndent(lineText).length;
-        var base = this._textEditor.cursorPositionToCoordinates(lineNumber, 0);
-
-        var start = this._textEditor.cursorPositionToCoordinates(lineNumber, Math.max(columnNumber - 1, lineIndent));
-        var end = this._textEditor.cursorPositionToCoordinates(lineNumber, lineText.length);
-        /** @const */
-        var codeMirrorLinesLeftPadding = 4;
-        this._wave.style.left = (start.x - base.x + codeMirrorLinesLeftPadding) + "px";
-        this._wave.style.width = (end.x - start.x) + "px";
-    },
-
-    /**
-     * @return {!Element}
-     */
-    messagesDescription: function()
-    {
-        this._messagesDescriptionElement.removeChildren();
-        for (var i = 0; i < this._messages.length; ++i) {
-            this._messagesDescriptionElement.appendChild(this._messages[i].element);
-        }
-        return this._messagesDescriptionElement;
-    },
-
-    detachFromEditor: function()
-    {
-        var position = this._lineHandle.resolve();
-        if (!position)
-            return;
-        var lineNumber = position.lineNumber;
-        if (this._level)
-            this._textEditor.toggleLineClass(lineNumber, WebInspector.SourceFrame._lineClassPerLevel[this._level], false);
-        this._textEditor.removeDecoration(lineNumber, this._decoration);
-    },
-
-    /**
-     * @return {number}
-     */
-    uniqueMessagesCount: function()
-    {
-        return this._messages.length;
-    },
-
-    /**
-     * @param {!WebInspector.SourceFrameMessage} message
-     */
-    addMessage: function(message)
-    {
-        for (var i = 0; i < this._messages.length; ++i) {
-            var rowMessage = this._messages[i];
-            if (rowMessage.message().isEqual(message)) {
-                rowMessage.setRepeatCount(rowMessage.repeatCount() + 1);
-                return;
-            }
-        }
-
-        var rowMessage = new WebInspector.SourceFrame.RowMessage(message);
-        this._messages.push(rowMessage);
-        this._updateDecoration();
-    },
-
-    /**
-     * @param {!WebInspector.SourceFrameMessage} message
-     */
-    removeMessage: function(message)
-    {
-        for (var i = 0; i < this._messages.length; ++i) {
-            var rowMessage = this._messages[i];
-            if (!rowMessage.message().isEqual(message))
-                continue;
-            rowMessage.setRepeatCount(rowMessage.repeatCount() - 1);
-            if (!rowMessage.repeatCount())
-                this._messages.splice(i, 1);
-            this._updateDecoration();
-            return;
-        }
-    },
-
-    _updateDecoration: function()
-    {
-        if (!this._sourceFrame._isEditorShowing())
-            return;
-        if (!this._messages.length)
-            return;
-        var position = this._lineHandle.resolve();
-        if (!position)
-            return;
-
-        var lineNumber = position.lineNumber;
-        var columnNumber = Number.MAX_VALUE;
-        var maxMessage = null;
-        for (var i = 0; i < this._messages.length; ++i) {
-            var message = this._messages[i].message();
-            columnNumber = Math.min(columnNumber, message.columnNumber());
-            if (!maxMessage || WebInspector.SourceFrameMessage.messageLevelComparator(maxMessage, message) < 0)
-                maxMessage = message;
-        }
-        this._updateWavePosition(lineNumber, columnNumber);
-
-        if (this._level) {
-            this._textEditor.toggleLineClass(lineNumber, WebInspector.SourceFrame._lineClassPerLevel[this._level], false);
-            this._icon.type = "";
-        }
-        this._level = maxMessage.level();
-        if (!this._level)
-            return;
-        this._textEditor.toggleLineClass(lineNumber, WebInspector.SourceFrame._lineClassPerLevel[this._level], true);
-        this._icon.type = WebInspector.SourceFrame._iconClassPerLevel[this._level];
-    }
+    __proto__: WebInspector.VBoxWithToolbarItems.prototype
 }
 
 /**
@@ -984,6 +660,8 @@ WebInspector.TextEditorDelegateForSourceFrame = function(sourceFrame)
 WebInspector.TextEditorDelegateForSourceFrame.prototype = {
     /**
      * @override
+     * @param {!WebInspector.TextRange} oldRange
+     * @param {!WebInspector.TextRange} newRange
      */
     onTextChanged: function(oldRange, newRange)
     {
@@ -1018,18 +696,25 @@ WebInspector.TextEditorDelegateForSourceFrame.prototype = {
 
     /**
      * @override
+     * @param {!WebInspector.ContextMenu} contextMenu
+     * @param {number} lineNumber
+     * @return {!Promise}
      */
     populateLineGutterContextMenu: function(contextMenu, lineNumber)
     {
-        this._sourceFrame.populateLineGutterContextMenu(contextMenu, lineNumber);
+        return this._sourceFrame.populateLineGutterContextMenu(contextMenu, lineNumber);
     },
 
     /**
      * @override
+     * @param {!WebInspector.ContextMenu} contextMenu
+     * @param {number} lineNumber
+     * @param {number} columnNumber
+     * @return {!Promise}
      */
     populateTextAreaContextMenu: function(contextMenu, lineNumber, columnNumber)
     {
-        this._sourceFrame.populateTextAreaContextMenu(contextMenu, lineNumber, columnNumber);
+        return this._sourceFrame.populateTextAreaContextMenu(contextMenu, lineNumber, columnNumber);
     },
 
     /**
@@ -1041,19 +726,4 @@ WebInspector.TextEditorDelegateForSourceFrame.prototype = {
     {
         this._sourceFrame.onJumpToPosition(from, to);
     }
-}
-
-WebInspector.SourceFrameMessage._messageLevelPriority = {
-    "Warning": 3,
-    "Error": 4
-};
-
-/**
- * @param {!WebInspector.SourceFrameMessage} a
- * @param {!WebInspector.SourceFrameMessage} b
- * @return {number}
- */
-WebInspector.SourceFrameMessage.messageLevelComparator = function(a, b)
-{
-    return WebInspector.SourceFrameMessage._messageLevelPriority[a.level()] - WebInspector.SourceFrameMessage._messageLevelPriority[b.level()];
 }

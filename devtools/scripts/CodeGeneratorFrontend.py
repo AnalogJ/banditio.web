@@ -53,7 +53,7 @@ except Exception:
     # Work with python 2 and 3 http://docs.python.org/py3k/howto/pyporting.html
     exc = sys.exc_info()[1]
     sys.stderr.write("Failed to parse command-line arguments: %s\n\n" % exc)
-    sys.stderr.write("Usage: <script> protocol.json --output_js_dir <output_js_dir>\n")
+    sys.stderr.write("Usage: <script> some.json --output_js_dir <output_js_dir>\n")
     exit(1)
 
 
@@ -157,7 +157,7 @@ class Templates:
             fill_recursive(os.path.dirname(path_part), depth - 1)
             components.append(os.path.basename(path_part))
 
-        # Typical path is /Source/WebCore/inspector/CodeGeneratorInspector.py
+        # Typical path is /Source/platform/inspector_protocol/CodeGenerator.py
         # Let's take 4 components from the real path then.
         fill_recursive(absolute_path, 4)
 
@@ -186,6 +186,8 @@ class Generator:
         for json_domain in json_api["domains"]:
             domain_name = json_domain["domain"]
             domain_name_lower = domain_name.lower()
+            if domain_name_lower == "console":
+                continue
 
             Generator.backend_js_domain_initializer_list.append("// %s.\n" % domain_name)
 

@@ -32,7 +32,7 @@
 
 .request-headers-view .outline-disclosure li.parent::before {
     position: static;
-    width: 9px;
+    width: 13px;
     height: 9px;
     -webkit-mask-position: -4px -98px;
     background-image: none;
@@ -101,6 +101,10 @@
     white-space: pre-wrap;
     word-break: break-all;
     margin-top: 1px;
+}
+
+.request-headers-view .outline-disclosure .empty-request-header {
+    color: rgba(33%, 33%, 33%, 0.5);
 }
 
 .resource-status-image {

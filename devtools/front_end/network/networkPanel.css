@@ -49,6 +49,11 @@
     background: white;
 }
 
+.network-item-preview-toolbar {
+    border-top: 1px solid #ccc;
+    background-color: #eee;
+}
+
 .resource-timing-view {
     display: block;
     margin: 6px;
@@ -124,38 +129,43 @@
     border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-.network-timing-bar.blocking {
+.network-timing-bar.blocking, -theme-preserve {
     background-color: #AAAAAA;
 }
 
-.network-timing-bar.proxy {
+.network-timing-bar.proxy, -theme-preserve {
     background-color: #A1887F;
 }
 
-.network-timing-bar.dns {
+.network-timing-bar.dns, -theme-preserve {
     background-color: #009688;
 }
 
 .network-timing-bar.connecting,
 .network-timing-bar.serviceworker,
-.network-timing-bar.serviceworker-preparation {
+.network-timing-bar.serviceworker-preparation, -theme-preserve {
     background-color: #FF9800;
 }
 
-.network-timing-bar.ssl {
+.network-timing-bar.ssl, -theme-preserve {
     background-color: #9C27B0;
 }
 
-.network-timing-bar.sending {
+.network-timing-bar.sending, -theme-preserve {
     background-color: #B0BEC5;
 }
 
-.network-timing-bar.waiting {
+.network-timing-bar.waiting, -theme-preserve {
     background-color: #00C853;
 }
 
-.network-timing-bar.receiving {
+.network-timing-bar.receiving, -theme-preserve,
+.network-timing-bar.receiving-push, -theme-preserve {
     background-color: #03A9F4;
+}
+
+.network-timing-bar.push, -theme-preserve {
+    background-color: #8CDBff;
 }
 
 .network-timing-bar.proxy,
@@ -215,8 +225,9 @@
     z-index: 250;
 }
 
-.request-view.json {
-    padding: 5px;
+.json-view {
+    padding: 2px 6px;
+    overflow: auto;
 }
 
 .request-view.html iframe {
@@ -230,38 +241,7 @@
     flex: none !important;
 }
 
-.blocked-urls-bar {
-    background-color: #f3f3f3;
-    flex: none;
-    border-bottom: 1px solid #dadada;
-    flex-wrap: wrap;
-    max-height: 127px;
-    overflow-y: auto;
-    overflow-x: hidden;
-}
-
-.blocked-urls-bar .blocked-url-container {
-    display: inline-flex;
-    padding: 2px;
-    margin: 2px;
-    background-color: #dadada;
-}
-
-.blocked-urls-bar .blocked-url-text {
-    max-width: 140px;
-    margin-right: 5px;
-    overflow: hidden;
-    flex: none;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.blocked-urls-bar .blocked-urls-empty {
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    padding: 5px;
+.network-blocked-urls {
+    border-top: 1px solid #dadada;
+    flex: 104px 0 0;
 }
