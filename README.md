@@ -1,18 +1,10 @@
 banditio.web
 ============
 
-banditio.web project messaging protocol
+To populate the devtools folder we did the following:
 
-
-{
-    room_id : '',                                   //String, this is a UUID
-    resource_id : '',                               //String, this is a UUID
-    message_type : '',
-    payload :
-
-}
-
-
-features
-
-group requests by sequence, or site.
+	curl -o devtools.tar.gz https://chromium.googlesource.com/chromium/blink/+archive/a4b68620673f48b35b2ba34bed3ccf39032d9132/Source/devtools.tar.gz
+	mkdir devtools && tar xvfz devtools.tar.gz -C devtools && rm devtools.tar.gz
+	pushd devtools && python scripts/CodeGeneratorFrontend.py protocol.json --output_js_dir front_end/ && popd
+	cp devtools_overrides/inspector.json devtools/front_end/inspector.json
+	cp devtools_overrides/SupportedCSSProperties.js devtools/front_end/SupportedCSSProperties.js
