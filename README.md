@@ -1,5 +1,6 @@
-banditio.web
-============
+# www.bandit.io Frontend
+
+[Docs](https://github.com/AnalogJ/banditio-docs/blob/master/README.md)
 
 To populate the devtools folder we did the following:
 
